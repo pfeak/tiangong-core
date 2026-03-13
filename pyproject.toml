@@ -1,0 +1,10 @@
+[project]
+name = "tiangong-core"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10.16"
+dependencies = [
+    "litellm>=1.82.1",
+    "pocketflow>=0.0.3",
+]
