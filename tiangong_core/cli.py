@@ -102,14 +102,28 @@ def skills_show(
 
 @skills_app.command("install", help="Install or update skills using clawhub")
 def skills_install(
+    names: list[str] = typer.Argument(
+        None,
+        help="optional skill names to install/update (default: interactive or as defined by clawhub)",
+    ),
     workspace: Path = typer.Option(Path("."), "--workspace", "-w", help="workspace path (default: .)"),
     update: bool = typer.Option(False, "--update", help="use clawhub update instead of install"),
 ) -> None:
+    """
+    Wrap `npx clawhub@latest install/update` so that users can either:
+    - run without names (delegating to clawhub's own behavior), or
+    - specify one or more skill names, e.g.:
+        tiangong skills install self-improving-agent other-skill
+    """
     ws = workspace.resolve()
     cmd = "update" if update else "install"
+    argv = ["npx", "clawhub@latest", cmd]
+    if names:
+        argv.extend(names)
+    argv.extend(["--workdir", str(ws)])
     try:
         res = subprocess.run(
-            ["npx", "clawhub@latest", cmd, "--workdir", str(ws)],
+            argv,
             check=False,
             capture_output=True,
             text=True,
@@ -222,10 +236,15 @@ def main(argv: list[str] | None = None) -> int:
     except typer.Exit as e:
         return int(e.exit_code or 0)
     except click.ClickException as e:
-        # Click/Typer usage errors (e.g. NoArgsIsHelp, NoSuchOption) are already
-        # formatted and printed by Click when using standalone_mode=False.
-        # Swallow the traceback here and propagate only the exit code so that
-        # the CLI exits cleanly without an exception stack trace.
+        # Click/Typer usage errors (e.g. NoArgsIsHelp, NoSuchOption).
+        # When using standalone_mode=False，需要手动输出错误/帮助信息，
+        # 否则用户只能看到非零退出码而没有任何提示。
+        try:
+            e.show()  # 打印 usage + 错误信息到 stderr
+        except Exception:
+            # show() 理论上很少失败，兜底打印一行错误文案
+            console.print(f"[red]{e.format_message() if hasattr(e, 'format_message') else str(e)}[/red]")
+        # 仍然只返回 exit code，避免 traceback。
         return int(getattr(e, "exit_code", 1) or 1)
     return 0
 
