@@ -146,6 +146,17 @@
 - `load_skills_for_context(names) -> str`
 - `build_skills_summary() -> str`（只提供概要与可用性，避免 system prompt 膨胀）
 
+#### 3.3.3 实现边界（v0.1 建议）
+
+- **core 负责加载与注入**：`tiangong-core` 内实现 `SkillsLoader`（建议位置：`tiangong_core/agent/skills.py`），并在 `ContextBuilder` 中使用“渐进式加载”策略：
+  - **默认注入 summary**（仅名称/描述/路径/可用性），避免 system prompt 膨胀
+  - **always skills 少量常驻**（满足要求时自动注入）
+  - **按需加载全文**：当策略需要时再把某个 `SKILL.md` 的 body 拼入上下文
+- **workspace 优先 + builtin 回退**：优先加载 `workspace/skills/` 下的技能；可选提供内置 skills（模板/示例），作为回退与开箱即用能力
+- **技能安装/更新不做成 core 硬编码依赖**：
+  - 推荐参考 `nanobot`：提供一个 `clawhub` 技能，指导用户通过 `npx clawhub@latest install/update --workdir <workspace>` 将技能下载安装到 `workspace/skills/`
+  - `tiangong-core` 可选提供 `tiangong skills ...` 的 CLI wrapper（本质仍是调用外部 CLI），但避免让 core 强依赖 Node.js/`npx`
+
 ### 3.4 Context（上下文构建）
 
 参考 `nanobot/agent/context.py`。

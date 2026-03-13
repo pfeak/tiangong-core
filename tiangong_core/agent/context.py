@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from tiangong_core.agent.skills import SkillsLoader
+
 
 BOOTSTRAP_FILES = ("AGENTS.md", "SOUL.md", "USER.md", "TOOLS.md")
 
@@ -26,6 +28,7 @@ class ContextParts:
 class ContextBuilder:
     def __init__(self, workspace: Path) -> None:
         self._ws = workspace
+        self._skills = SkillsLoader(workspace=workspace)
 
     def load_bootstrap(self) -> str:
         chunks: list[str] = []
@@ -36,17 +39,13 @@ class ContextBuilder:
         return "\n\n".join(chunks).strip()
 
     def build_skills_summary(self) -> str:
-        skills_dir = self._ws / "skills"
-        if not skills_dir.exists():
-            return ""
-        names = sorted({p.parent.name for p in skills_dir.glob("*/SKILL.md")})
+        return self._skills.build_skills_summary()
+
+    def load_always_skills(self) -> str:
+        names = self._skills.get_always_skills()
         if not names:
             return ""
-        return (
-            "## Skills\n"
-            "可用技能（按需启用；避免把整份技能全文塞满上下文）：\n"
-            + "\n".join(f"- {n}" for n in names)
-        )
+        return self._skills.load_skills_for_context(names)
 
     def load_memory(self) -> str:
         mem_dir = self._ws / "memory"
@@ -62,6 +61,7 @@ class ContextBuilder:
     def build(self) -> ContextParts:
         bootstrap = self.load_bootstrap()
         skills = self.build_skills_summary()
+        always_skills = self.load_always_skills()
         memory = self.load_memory()
 
         system_chunks = []
@@ -69,6 +69,8 @@ class ContextBuilder:
             system_chunks.append(bootstrap)
         if skills:
             system_chunks.append(skills)
+        if always_skills:
+            system_chunks.append(always_skills)
         if memory:
             system_chunks.append(memory)
 

@@ -5,6 +5,7 @@ from typing import Any
 
 from tiangong_core.bus.events import InboundMessage
 from tiangong_core.bus.queue import MessageBus
+from tiangong_core.utils.ids import new_id
 
 
 @dataclass(frozen=True)
@@ -20,7 +21,7 @@ class CLIChannel:
 
     def start_interactive(self, *, chat_id: str = "default") -> None:
         session_key = f"{self._cfg.channel_name}:{chat_id}"
-        print("Tiangong CLI（输入 /exit 退出）")
+        print("Tiangong CLI（输入 /exit 退出，/stop 停止该会话）")
         while True:
             try:
                 s = input("> ").strip()
@@ -36,7 +37,7 @@ class CLIChannel:
                     chat_id=chat_id,
                     content=s,
                     session_key=session_key,
-                    metadata={},
+                    metadata={"run_id": new_id(), "channel": self._cfg.channel_name, "chat_id": chat_id},
                 )
             )
 

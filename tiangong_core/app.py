@@ -56,7 +56,8 @@ class TiangongApp:
         return reg
 
     def run_once(self, inbound: InboundMessage) -> None:
-        run_id = new_id()
+        # runtime metadata: app identity + per-run id + inbound extras
+        run_id = str((inbound.metadata or {}).get("run_id") or "") or new_id()
         runtime_metadata: dict[str, Any] = {
             "agent_id": self._agent_id,
             "agent_name": self._agent_name,
@@ -64,6 +65,23 @@ class TiangongApp:
             "channel": inbound.channel,
             "chat_id": inbound.chat_id,
         }
+        if inbound.metadata:
+            # allow channel to attach additional fields (non-conflicting)
+            runtime_metadata.update({k: v for k, v in inbound.metadata.items() if k not in runtime_metadata})
+
+        # built-in command: /stop
+        if inbound.content.strip() == "/stop":
+            self.sessions.stop(inbound.session_key, metadata=runtime_metadata)
+            self.bus.publish_outbound(
+                OutboundMessage(
+                    channel=inbound.channel,
+                    chat_id=inbound.chat_id,
+                    session_key=inbound.session_key,
+                    content="已停止该会话（/stop）。",
+                    metadata={**runtime_metadata, "event": "final"},
+                )
+            )
+            return
 
         ctx = self.ctx_builder.build()
         tools = self._build_tools(inbound, runtime_metadata)
@@ -113,6 +131,11 @@ class TiangongApp:
                 self.run_once(msg)
             except Exception as e:
                 # 避免后台线程静默崩溃导致 channel 永远等不到 outbound
+                run_id = ""
+                try:
+                    run_id = str((msg.metadata or {}).get("run_id") or "")
+                except Exception:
+                    run_id = ""
                 self.bus.publish_outbound(
                     OutboundMessage(
                         channel=msg.channel,
@@ -123,6 +146,7 @@ class TiangongApp:
                             "event": "error",
                             "agent_id": getattr(self, "_agent_id", ""),
                             "agent_name": getattr(self, "_agent_name", ""),
+                            "run_id": run_id,
                             "channel": msg.channel,
                             "chat_id": msg.chat_id,
                         },

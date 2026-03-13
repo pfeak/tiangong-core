@@ -14,6 +14,10 @@ class SessionPaths:
         safe = "".join(c if c.isalnum() or c in ("-", "_", ".") else "_" for c in session_key)[:200]
         return self.root / f"{safe}.jsonl"
 
+    def stop_file_for(self, session_key: str) -> Path:
+        safe = "".join(c if c.isalnum() or c in ("-", "_", ".") else "_" for c in session_key)[:200]
+        return self.root / f"{safe}.stop.json"
+
 
 def _is_user_turn_start(msg: dict[str, Any]) -> bool:
     return msg.get("role") == "user"
@@ -39,11 +43,35 @@ class SessionManager:
                 continue
         return out
 
+    def is_stopped(self, session_key: str) -> bool:
+        p = self._paths.stop_file_for(session_key)
+        if not p.exists():
+            return False
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+            return bool(data.get("stopped"))
+        except Exception:
+            return True
+
+    def stop(self, session_key: str, *, metadata: dict[str, Any] | None = None) -> None:
+        p = self._paths.stop_file_for(session_key)
+        payload = {"stopped": True}
+        if metadata:
+            payload["metadata"] = metadata
+        p.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
     def append(self, session_key: str, records: Iterable[dict[str, Any]]) -> None:
         p = self._paths.file_for(session_key)
         with p.open("a", encoding="utf-8") as f:
             for r in records:
                 f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
+    def append_meta(self, session_key: str, meta: dict[str, Any]) -> None:
+        """
+        Append a non-message meta record for this run/turn.
+        Note: get_history() will ignore it because it doesn't have role=...
+        """
+        self.append(session_key, [{"type": "meta", **meta}])
 
     def get_history(self, session_key: str, max_messages: int = 50) -> list[dict[str, Any]]:
         rows = self.load(session_key)

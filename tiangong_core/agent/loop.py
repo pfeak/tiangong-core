@@ -53,6 +53,10 @@ class AgentLoop:
         runtime_metadata: dict[str, Any],
         progress: ProgressCb | None = None,
     ) -> LoopResult:
+        if self._sessions.is_stopped(session_key):
+            run_id0 = str(runtime_metadata.get("run_id") or "")
+            return LoopResult(content="该会话已停止（/stop）。", run_id=run_id0)
+
         history = self._sessions.get_history(session_key, max_messages=80)
         messages: list[dict[str, Any]] = []
         if system_prompt:
@@ -72,13 +76,20 @@ class AgentLoop:
         run_id = str(runtime_metadata.get("run_id") or "")
 
         turn_records: list[dict[str, Any]] = []
+        # 头记录：便于后续按 run_id/agent_id 排查、回放
+        self._sessions.append_meta(session_key, {"run_id": run_id, "metadata": runtime_metadata})
         turn_records.append({"role": "user", "content": messages[-1]["content"], "metadata": runtime_metadata})
 
         for _i in range(max(1, self._max_iter)):
+            if self._sessions.is_stopped(session_key):
+                self._sessions.append(session_key, turn_records)
+                return LoopResult(content="已停止（/stop）。", run_id=run_id)
+
             resp = self._provider.chat_with_retry(messages=messages, tools=tool_defs, model=self._model)
             assistant_msg: dict[str, Any] = {
                 "role": "assistant",
                 "content": resp.content or "",
+                "metadata": runtime_metadata,
             }
             if resp.tool_calls:
                 assistant_msg["tool_calls"] = [
@@ -104,7 +115,7 @@ class AgentLoop:
                     progress(f"[tool] {c.name}")
                 out = self._tools.execute(c.name, c.arguments)
                 out = _truncate(out, self._tool_max)
-                tool_msg = {"role": "tool", "tool_call_id": c.id, "content": out}
+                tool_msg = {"role": "tool", "tool_call_id": c.id, "content": out, "metadata": runtime_metadata}
                 messages.append(tool_msg)
                 turn_records.append(tool_msg)
 
