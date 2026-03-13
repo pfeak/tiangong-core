@@ -5,6 +5,23 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10.16"
 dependencies = [
+    "dotenv>=0.9.9",
     "litellm>=1.82.1",
     "pocketflow>=0.0.3",
 ]
+
+[project.scripts]
+tiangong = "tiangong_core.cli:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+# 避免 flat-layout 下误把顶层目录（如 `runtime/`、`sessions/`）识别成包/命名空间包
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tiangong_core*"]
+exclude = ["runtime*", "sessions*"]
