@@ -83,7 +83,7 @@ class TiangongApp:
                     chat_id=inbound.chat_id,
                     session_key=inbound.session_key,
                     content=s,
-                    metadata=runtime_metadata,
+                    metadata={**runtime_metadata, "event": "progress"},
                 )
             )
 
@@ -100,7 +100,7 @@ class TiangongApp:
                 chat_id=inbound.chat_id,
                 session_key=inbound.session_key,
                 content=res.content,
-                metadata=runtime_metadata,
+                metadata={**runtime_metadata, "event": "final"},
             )
         )
 
@@ -109,4 +109,22 @@ class TiangongApp:
             msg = self.bus.consume_inbound(timeout_s=0.5)
             if msg is None:
                 continue
-            self.run_once(msg)
+            try:
+                self.run_once(msg)
+            except Exception as e:
+                # 避免后台线程静默崩溃导致 channel 永远等不到 outbound
+                self.bus.publish_outbound(
+                    OutboundMessage(
+                        channel=msg.channel,
+                        chat_id=msg.chat_id,
+                        session_key=msg.session_key,
+                        content=f"[error] {type(e).__name__}: {e}",
+                        metadata={
+                            "event": "error",
+                            "agent_id": getattr(self, "_agent_id", ""),
+                            "agent_name": getattr(self, "_agent_name", ""),
+                            "channel": msg.channel,
+                            "chat_id": msg.chat_id,
+                        },
+                    )
+                )

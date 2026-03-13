@@ -29,22 +29,60 @@ def _sanitize_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def _coerce_mapping(obj: Any) -> dict[str, Any]:
+    """
+    LiteLLM 可能返回 pydantic/typed object（非 dict）作为 message/tool_calls。
+    这里尽量把它们转成 dict，避免 tool_calls 被静默丢弃。
+    """
+    if obj is None:
+        return {}
+    if isinstance(obj, dict):
+        return obj
+    # pydantic v2
+    if hasattr(obj, "model_dump"):
+        try:
+            d = obj.model_dump()  # type: ignore[attr-defined]
+            return d if isinstance(d, dict) else {}
+        except Exception:
+            pass
+    # pydantic v1
+    if hasattr(obj, "dict"):
+        try:
+            d = obj.dict()  # type: ignore[attr-defined]
+            return d if isinstance(d, dict) else {}
+        except Exception:
+            pass
+    # generic objects
+    try:
+        d = dict(obj)  # type: ignore[arg-type]
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        pass
+    try:
+        d = vars(obj)
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
 def _parse_tool_calls(resp_message: dict[str, Any]) -> list[ToolCallRequest]:
     calls = resp_message.get("tool_calls") or []
     out: list[ToolCallRequest] = []
     for c in calls:
-        if not isinstance(c, dict):
-            continue
-        fn = (c.get("function") or {}) if isinstance(c.get("function"), dict) else {}
-        name = fn.get("name")
-        args_raw = fn.get("arguments")
+        cc = _coerce_mapping(c)
+        fn = _coerce_mapping(cc.get("function"))
+        name = fn.get("name") or cc.get("name")
+        args_raw = fn.get("arguments") if "arguments" in fn else cc.get("arguments")
         if not name:
             continue
         try:
-            args = json.loads(args_raw) if isinstance(args_raw, str) and args_raw.strip() else {}
+            if isinstance(args_raw, dict):
+                args = args_raw
+            else:
+                args = json.loads(args_raw) if isinstance(args_raw, str) and args_raw.strip() else {}
         except Exception:
             args = {}
-        out.append(ToolCallRequest(id=str(c.get("id") or ""), name=str(name), arguments=args))
+        out.append(ToolCallRequest(id=str(cc.get("id") or ""), name=str(name), arguments=args))
     return out
 
 

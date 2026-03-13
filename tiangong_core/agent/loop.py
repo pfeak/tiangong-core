@@ -86,11 +86,16 @@ class AgentLoop:
                     for c in resp.tool_calls
                 ]
             messages.append(assistant_msg)
-            if resp.content or not resp.tool_calls:
-                turn_records.append(assistant_msg)
+            # 重要：当返回 tool_calls 且 content 为空时，也必须把该 assistant 消息持久化，
+            # 否则下一轮 history 会出现“tool 消息无对应 tool_calls”的非法序列，导致 provider 400。
+            turn_records.append(assistant_msg)
 
             if not resp.tool_calls:
-                final = resp.content or ""
+                # 某些 provider 可能返回 content=None 且无 tool_calls，避免 CLI 打印空行造成“无返回”的错觉
+                if not resp.content:
+                    final = "（未收到模型输出内容：content 为空，且无 tool_calls；请检查模型/Provider 配置或网络状态）"
+                else:
+                    final = resp.content
                 self._sessions.append(session_key, turn_records)
                 return LoopResult(content=final, run_id=run_id)
 

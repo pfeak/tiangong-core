@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import threading
 from pathlib import Path
 
@@ -18,6 +19,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # LiteLLM 会在启动/首次调用时尝试拉取远程 model cost map，网络差时会刷 WARNING。
+    # 该告警不影响核心功能（会 fallback 到本地 backup），这里默认降噪到 ERROR。
+    logging.getLogger("LiteLLM").setLevel(logging.ERROR)
+
     args = build_parser().parse_args(argv)
     workspace = Path(args.workspace).resolve()
     cfg = load_config(workspace)
@@ -37,9 +42,16 @@ def main(argv: list[str] | None = None) -> int:
         app.bus.publish_inbound(
             InboundMessage(channel="cli", chat_id=args.chat_id, content=args.message, session_key=session_key, metadata={})
         )
-        out = app.bus.consume_outbound(timeout_s=120.0)
-        if out:
+        # 与交互模式一致：消费直到 final/error，避免 progress 消息抢先
+        while True:
+            out = app.bus.consume_outbound(timeout_s=120.0)
+            if not out:
+                print("[timeout] 未收到模型输出（120s）")
+                break
             print(out.content)
+            event = (out.metadata or {}).get("event")
+            if event in ("final", "error"):
+                break
         return 0
 
     channel.start_interactive(chat_id=args.chat_id)

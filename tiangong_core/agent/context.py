@@ -72,4 +72,12 @@ class ContextBuilder:
         if memory:
             system_chunks.append(memory)
 
-        return ContextParts(system="\n\n".join(system_chunks).strip(), skills_summary=skills, memory=memory)
+        system = "\n\n".join(system_chunks).strip()
+        if not system:
+            # 兜底 system prompt：没有 workspace 引导文件时也尽量让 agent 正确使用工具
+            system = (
+                "你是 Tiangong 助手，运行在一个本地 workspace 中。\n"
+                "当用户请求查看/操作文件、执行命令、读取目录内容等需要真实环境信息时，优先使用可用工具获取事实（如 shell.exec、fs.*）。\n"
+                "回复应直接给出结果；如果工具执行失败，要把错误原因和可操作的下一步说明清楚。"
+            )
+        return ContextParts(system=system, skills_summary=skills, memory=memory)

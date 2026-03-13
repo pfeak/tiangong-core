@@ -40,7 +40,13 @@ class CLIChannel:
                 )
             )
 
-            # 等待一条输出并打印（v0.1 简化：1 in -> 1 out）
-            out = self._bus.consume_outbound(timeout_s=120.0)
-            if out:
+            # 等待并打印直到拿到最终消息（解决 progress/tool 输出先于 final 的情况）
+            while True:
+                out = self._bus.consume_outbound(timeout_s=120.0)
+                if not out:
+                    print("[timeout] 未收到模型输出（120s）")
+                    break
                 print(out.content)
+                event = (out.metadata or {}).get("event")
+                if event in ("final", "error"):
+                    break
