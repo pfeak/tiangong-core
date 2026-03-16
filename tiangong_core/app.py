@@ -13,6 +13,8 @@ from tiangong_core.providers.litellm_provider import LiteLLMProvider
 from tiangong_core.runtime.identity import load_or_create_identity
 from tiangong_core.session.manager import SessionManager
 from tiangong_core.skills.runtime import SkillsRuntime
+from tiangong_core.cron.service import CronService
+from tiangong_core.agent.subagent import SubagentManager
 from tiangong_core.skills.adapters.fs import make_fs_skills
 from tiangong_core.skills.adapters.message import MessageSkillContext, make_message_skills
 from tiangong_core.skills.adapters.shell import make_shell_skills
@@ -30,6 +32,9 @@ class TiangongApp:
         self.bus = MessageBus()
         self.sessions = SessionManager(workspace)
         self.ctx_builder = ContextBuilder(workspace)
+        # Background services (no env vars required)
+        self.cron = CronService(bus=self.bus)
+        self.subagents = SubagentManager(bus=self.bus)
 
         ident = load_or_create_identity(workspace, config.agent.agent_name)
         self._agent_id = ident.agent_id
@@ -74,9 +79,9 @@ class TiangongApp:
         ):
             rt.register(s)
         # 预留 cron/subagent/mcp 三类能力的注入入口，均由各自的 feature flag 控制是否生效。
-        for s in make_cron_skills():
+        for s in make_cron_skills(svc=self.cron):
             rt.register(s)
-        for s in make_spawn_skills():
+        for s in make_spawn_skills(mgr=self.subagents):
             rt.register(s)
         for s in make_mcp_skills():
             rt.register(s)
@@ -95,6 +100,24 @@ class TiangongApp:
         if inbound.metadata:
             # allow channel to attach additional fields (non-conflicting)
             runtime_metadata.update({k: v for k, v in inbound.metadata.items() if k not in runtime_metadata})
+
+        # If a subagent was cancelled before starting, skip execution.
+        if inbound.channel == "subagent":
+            try:
+                subagent_id = str(inbound.chat_id or "")
+                if subagent_id and self.subagents.is_cancelled(subagent_id):
+                    self.bus.publish_outbound(
+                        OutboundMessage(
+                            channel=inbound.channel,
+                            chat_id=inbound.chat_id,
+                            session_key=inbound.session_key,
+                            content="该子任务已取消，未执行。",
+                            metadata={**runtime_metadata, "event": "final"},
+                        )
+                    )
+                    return
+            except Exception:
+                pass
 
         # built-in command: /stop
         if inbound.content.strip() == "/stop":

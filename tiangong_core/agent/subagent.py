@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any, Dict
+
+from tiangong_core.bus.events import InboundMessage
+from tiangong_core.bus.queue import MessageBus
 
 
 @dataclass(frozen=True)
@@ -29,9 +33,11 @@ class SubagentManager:
     v0.1 中我们仅提供最小可用的接口形状，具体调度/隔离策略后续迭代补充。
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, bus: MessageBus) -> None:
         # 目前仅在内存中保存占位信息，避免 API 形状日后难以兼容。
         self._running: dict[str, SubagentHandle] = {}
+        self._cancelled: set[str] = set()
+        self._bus = bus
 
     def spawn(
         self,
@@ -53,8 +59,34 @@ class SubagentManager:
         subagent_id = new_id()
         handle = SubagentHandle(subagent_id=subagent_id, parent_agent_id=parent_agent_id, subtask_id=subtask_id)
         self._running[subagent_id] = handle
-        # payload 当前仅用于未来扩展，不做持久化。
-        _ = payload
+        # v0.1：将子任务投递为一条 inbound message，由 TiangongApp 的 serve_forever 异步消费执行。
+        p = dict(payload or {})
+        self._bus.publish_inbound(
+            InboundMessage(
+                channel="subagent",
+                chat_id=subagent_id,
+                session_key=f"subagent:{subagent_id}",
+                content=json.dumps(
+                    {
+                        "event": "subagent",
+                        "subagent_id": subagent_id,
+                        "parent_agent_id": parent_agent_id,
+                        "name": name,
+                        "payload": p,
+                        "subtask_id": subtask_id,
+                    },
+                    ensure_ascii=False,
+                ),
+                metadata={
+                    "event": "subagent",
+                    "subagent_id": subagent_id,
+                    "parent_agent_id": parent_agent_id,
+                    "name": name,
+                    "payload": p,
+                    "subtask_id": subtask_id,
+                },
+            )
+        )
         return handle
 
     def cancel(self, subagent_id: str) -> bool:
@@ -64,7 +96,13 @@ class SubagentManager:
         v0.1 中仅从内存表中移除记录，不做真正的进程/任务取消。
         返回值表示是否存在对应 subagent 记录。
         """
-        return self._running.pop(subagent_id, None) is not None
+        existed = self._running.pop(subagent_id, None) is not None
+        if existed:
+            self._cancelled.add(subagent_id)
+        return existed
+
+    def is_cancelled(self, subagent_id: str) -> bool:
+        return subagent_id in self._cancelled
 
     def list_running(self) -> list[SubagentHandle]:
         """

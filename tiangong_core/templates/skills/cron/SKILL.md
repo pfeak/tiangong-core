@@ -1,14 +1,14 @@
 ---
 name: cron
-description: Define cron-like scheduled jobs that trigger the agent using the cron.schedule skill. v0.1 records specs but does not execute real scheduling.
+description: Define cron-like scheduled jobs that trigger the agent using the cron.schedule skill. v0.1 schedules in-process and triggers via the message bus.
 homepage: https://github.com/pfeak/tiangong-core
 metadata: {"tiangong":{"emoji":"⏰","always":false}}
 ---
 
 # Cron Skill (`cron.schedule`)
 
-Use this skill to **describe scheduled jobs** that should run periodically and invoke the agent with a payload.  
-In Tiangong v0.1 this API validates and records job specs, but does **not** yet start a real scheduler.
+Use this skill to create **in-process scheduled jobs** that run periodically and invoke the agent with a payload.  
+In Tiangong v0.1, jobs are scheduled by a lightweight background thread inside the running process (no external service required).
 
 ## When to use
 
@@ -39,8 +39,9 @@ Result structure:
 ```json
 {
   "ok": true,
-  "message": "cron.schedule 接口已注册，但当前版本仅记录参数，不执行实际调度。",
+  "message": "cron.schedule 已创建任务；由本进程后台调度线程触发执行。",
   "job": {
+    "job_id": "uuid",
     "cron": "*/5 * * * *",
     "payload": { "...": "..." },
     "session_key": null
@@ -50,5 +51,4 @@ Result structure:
 
 ## Notes
 
-- Treat this as a **design-time** API in v0.1: it records and validates specs for future real scheduling.
-- When real scheduling is added, the same shape should remain compatible so existing calls continue to work.
+- v0.1 的调度能力为“进程内后台线程”，适合本地/单进程运行场景；未来可替换为更可靠的持久化/分布式调度而保持接口形状兼容。
