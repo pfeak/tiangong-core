@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+import os
 
 from tiangong_core.agent.context import ContextBuilder
 from tiangong_core.agent.loop import AgentLoop
@@ -32,6 +33,22 @@ class TiangongApp:
         self._agent_name = ident.agent_name
 
         self.provider = LiteLLMProvider(api_key=config.provider.api_key, api_base=config.provider.api_base)
+
+    def make_session_key(self, *, channel: str, chat_id: str) -> str:
+        """
+        根据配置生成 session_key，支持按 channel/chat_id 或 agent_id+chat_id 两种方案：
+        - 方案 A（默认）：channel/chat_id → "cli:default"
+        - 方案 B：agent_id + chat_id → "<agent_id>:<chat_id>"
+
+        通过环境变量 TIANGONG_SESSION_KEY_SCHEME 控制：
+        - "agent_chat"：使用 agent_id + chat_id（方案 B）
+        - 其他/未设置：使用 channel + chat_id（方案 A）
+        """
+        scheme = os.getenv("TIANGONG_SESSION_KEY_SCHEME", "channel_chat").strip().lower()
+        if scheme == "agent_chat":
+            return f"{self._agent_id}:{chat_id}"
+        # 默认：按 channel + chat_id
+        return f"{channel}:{chat_id}"
 
     def _build_tools(self, inbound: InboundMessage, runtime_metadata: dict[str, Any]) -> ToolRegistry:
         reg = ToolRegistry()

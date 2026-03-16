@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import threading
 from pathlib import Path
@@ -17,6 +18,7 @@ from rich.text import Text
 
 from tiangong_core.app import TiangongApp
 from tiangong_core.agent.skills import SkillsLoader
+from tiangong_core.channels.cli import CLIChannel, CLIChannelConfig
 from tiangong_core.config import load_config
 from tiangong_core.utils.ids import new_id
 
@@ -121,21 +123,46 @@ def skills_install(
     if names:
         argv.extend(names)
     argv.extend(["--workdir", str(ws)])
+
+    def read_output(pipe, is_stderr=False):
+        """实时读取并打印输出"""
+        try:
+            for line in iter(pipe.readline, ''):
+                if line:
+                    if is_stderr:
+                        console.print(f"[yellow]{line.rstrip()}[/yellow]")
+                    else:
+                        console.print(line.rstrip())
+        finally:
+            pipe.close()
+
     try:
-        res = subprocess.run(
+        process = subprocess.Popen(
             argv,
-            check=False,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
+            bufsize=1,
         )
+
+        # 创建线程实时读取输出
+        stdout_thread = threading.Thread(target=read_output, args=(process.stdout, False))
+        stderr_thread = threading.Thread(target=read_output, args=(process.stderr, True))
+
+        stdout_thread.start()
+        stderr_thread.start()
+
+        # 等待进程完成
+        returncode = process.wait()
+
+        # 等待输出线程完成
+        stdout_thread.join()
+        stderr_thread.join()
+
+        raise typer.Exit(code=int(returncode or 0))
     except FileNotFoundError:
         console.print("[red][error][/red] 未找到 npx。请先安装 Node.js，或手动把技能放入 workspace/skills/<name>/SKILL.md")
         raise typer.Exit(code=127)
-    if res.stdout:
-        console.print(res.stdout.rstrip())
-    if res.stderr:
-        console.print(res.stderr.rstrip())
-    raise typer.Exit(code=int(res.returncode or 0))
 
 
 @app.command("agent", help="Chat with Tiangong agent in CLI")
@@ -153,13 +180,22 @@ def agent(
     cfg = load_config(ws)
     core = TiangongApp(workspace=ws, config=cfg)
 
+    # 将本地 CLI 封装为 CLIChannel，并在入口做 sender 级 ACL 校验。
+    # 默认 allow_all=True，保证开箱即用；用户可通过配置/环境变量自定义 allow_from。
+    cli_cfg = CLIChannelConfig()
+    cli_channel = CLIChannel(bus=core.bus, config=cli_cfg)
+
     # agent loop 消费 inbound 并产出 outbound
     t = threading.Thread(target=core.serve_forever, daemon=True)
     t.start()
 
     from tiangong_core.bus.events import InboundMessage
 
-    session_key = f"cli:{chat_id}"
+    # session_key 由 TiangongApp 统一生成，支持 A/B 方案切换。
+    session_key = core.make_session_key(channel="cli", chat_id=chat_id)
+
+    # sender_id：本地 CLI 默认使用当前登录用户或 "local-cli"
+    sender_id = os.getenv("TIANGONG_CLI_SENDER") or os.getenv("USER") or "local-cli"
 
     def _print_response_block(content: str) -> None:
         def _render(c: Console) -> None:
@@ -175,6 +211,9 @@ def agent(
         _pt_print(lambda c: c.print(f"  [dim]↳ {content}[/dim]"))
 
     def _run_one_turn(user_text: str) -> None:
+        if not cli_channel.is_allowed(sender_id=sender_id):
+            _print_progress_line(f"[denied] sender '{sender_id}' is not allowed by CLIChannel allowlist")
+            return
         run_id = new_id()
         core.bus.publish_inbound(
             InboundMessage(
@@ -182,7 +221,7 @@ def agent(
                 chat_id=chat_id,
                 content=user_text,
                 session_key=session_key,
-                metadata={"run_id": run_id, "channel": "cli", "chat_id": chat_id},
+                metadata={"run_id": run_id, "channel": "cli", "chat_id": chat_id, "sender_id": sender_id},
             )
         )
         # 消费直到 final/error；progress 直接行输出

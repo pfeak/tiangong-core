@@ -15,13 +15,19 @@ tags:
 如果系统已安装 Node.js（含 `npx`），可使用 clawhub：
 
 ```bash
-npx clawhub@latest install --workdir "<workspace>"
+npx clawhub@latest install --workdir "<workspace>" 
 ```
 
 或更新：
 
 ```bash
 npx clawhub@latest update --workdir "<workspace>"
+```
+
+每次下载先登录：
+
+```bash
+clawhub login --token <token>
 ```
 
 安装完成后，你可以通过 `tiangong skills list` 查看已发现的技能。

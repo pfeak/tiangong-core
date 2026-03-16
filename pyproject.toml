@@ -31,3 +31,8 @@ exclude = ["runtime*", "sessions*"]
 
 [tool.setuptools.package-data]
 tiangong_core = ["templates/**/*.md"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]

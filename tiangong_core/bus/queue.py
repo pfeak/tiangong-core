@@ -39,3 +39,12 @@ class MessageBus:
             if not self._outbound.items:
                 self._outbound.cv.wait(timeout=timeout_s)
             return self._outbound.items.popleft() if self._outbound.items else None
+
+
+class InMemoryMessageBus(MessageBus):
+    """
+    目前 MessageBus 本身就是基于内存队列的实现，这个子类只是一个语义化别名，
+    方便在测试或简单场景中显式使用 InMemoryMessageBus 类型。
+    """
+
+    pass

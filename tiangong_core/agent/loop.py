@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from typing import Any, Callable
+import logging
 
 from tiangong_core.providers.base import LLMProvider
 from tiangong_core.session.manager import SessionManager
@@ -43,6 +44,7 @@ class AgentLoop:
         self._model = model
         self._max_iter = max_iterations
         self._tool_max = tool_result_max_chars
+        self._log = logging.getLogger("tiangong.agentloop")
 
     def process_direct(
         self,
@@ -85,6 +87,20 @@ class AgentLoop:
                 self._sessions.append(session_key, turn_records)
                 return LoopResult(content="已停止（/stop）。", run_id=run_id)
 
+            # provider 调用结构化日志
+            try:
+                self._log.info(
+                    "provider_call",
+                    extra={
+                        "agent_id": runtime_metadata.get("agent_id"),
+                        "run_id": run_id,
+                        "session_key": session_key,
+                        "model": self._model,
+                    },
+                )
+            except Exception:
+                pass
+
             resp = self._provider.chat_with_retry(messages=messages, tools=tool_defs, model=self._model)
             assistant_msg: dict[str, Any] = {
                 "role": "assistant",
@@ -113,6 +129,18 @@ class AgentLoop:
             for c in resp.tool_calls:
                 if progress:
                     progress(f"[tool] {c.name}")
+                try:
+                    self._log.info(
+                        "tool_exec",
+                        extra={
+                            "agent_id": runtime_metadata.get("agent_id"),
+                            "run_id": run_id,
+                            "session_key": session_key,
+                            "tool_name": c.name,
+                        },
+                    )
+                except Exception:
+                    pass
                 out = self._tools.execute(c.name, c.arguments)
                 out = _truncate(out, self._tool_max)
                 tool_msg = {"role": "tool", "tool_call_id": c.id, "content": out, "metadata": runtime_metadata}

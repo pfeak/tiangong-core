@@ -13,24 +13,12 @@
 
 ## 1. tiangong-core：内核最小闭环
 
-### 1.1 Bus + Events + Channels（CLI 优先）
-
-- [~] **定义事件模型**：`InboundMessage/OutboundMessage`（字段包含 `metadata.agent_id/agent_name/run_id`）（已定义事件模型：`tiangong_core/bus/events.py`；runtime 元数据在 `TiangongApp.run_once()` 侧注入到 outbound 的 `metadata`，inbound 侧仍是空 metadata）
-- [~] **通道权限**：allowlist 的默认策略与 CLI 兼容（CLI 可默认允许）（CLIConfig 里已有 `allow_all=True`，但尚未实现真正的 allowlist 校验/拦截）
-
-### 1.2 Session（append-only JSONL）
-
-- [~] **Session/SessionManager**：jsonl 存取、缓存、`get_history()` 对齐 user turn（已实现 append-only JSONL + `get_history()` 对齐 user turn：`tiangong_core/session/manager.py`；尚未实现缓存层）
-- [~] **session_key 方案**：v0.1 实现 PRD 方案 A（metadata 记录 agent_id），并预留切到方案 B 的开关（当前 `session_key` 由 channel 拼接：`cli:{chat_id}`；agent_id/run_id 作为 runtime_metadata 注入到 user turn 内容与 outbound metadata；尚未实现可切换方案/明确 PRD A/B 开关）
+### 1.1 Session（append-only JSONL）
 
 ### 1.3 ContextBuilder（bootstrap + skills + memory + runtime）
 
-- [ ] **SkillsLoader**：实现 `list_skills()/get_always_skills()/load_skills_for_context()/build_skills_summary()`（对齐 `prd.md` 3.3.2），并支持 workspace skills 优先 + builtin skills 回退
-- [ ] **Skills 获取与管理（可选）**：提供 `clawhub` 技能（或 CLI wrapper）以安装/更新 skills 到 `workspace/skills/`，但 core 不强依赖 Node（参考 `nanobot` 的“clawhub skill + npx”方式）
-
 ### 1.4 Providers（LiteLLM 主实现 + registry）
 
-- [~] **Provider registry**：ProviderSpec + find_by_model/find_gateway（网关/本地/直连识别）（已实现 ProviderSpec + `find_by_model()` + `normalize_model()`：`tiangong_core/providers/registry.py`；尚未实现 `find_gateway()`/按 api_base+key 前缀的完整识别链路）
 - [~] **LiteLLMProvider**：model 解析、drop_params、messages sanitize、tool_call_id 规范化（已实现 model normalize、messages sanitize、tool_calls 解析与 tool_call_id 透传：`tiangong_core/providers/litellm_provider.py`；“drop_params”目前为尽量少传参策略，未做可配置的参数剔除表）
 - [~] **最小可用 provider 配置**：至少覆盖 1 个标准 provider + 1 个网关（便于真实跑通）（已支持 `openai/*` 与 openai-compatible gateway 的基础 spec；配置目前主要走 env：`TIANGONG_*`）
 
@@ -40,8 +28,6 @@
 - [ ] **spawn/cron/mcp 接口预留**：先定义工具 schema 与空实现或 feature flag（未实现）
 
 ### 1.6 AgentLoop（核心迭代执行）
-
-- [~] **run_id 链路贯穿**：provider 调用、工具执行、session 写入、outbound 发送都带 run_id（已在 runtime_metadata/outbound metadata/session records 里携带；provider 调用本身未显式记录 run_id 到 provider 层日志/trace）
 
 ### 1.7 PocketFlow glue（节点/图执行）
 
@@ -72,7 +58,10 @@
 
 ---
 
-## 3. 质量与可维护性（最低要求）
+## 接下来建议优先级（v0.1 → 可跑可迭代）
 
-- [ ] **日志与可观测性**：关键路径打点（provider 调用、工具执行、session 落盘），日志包含 agent_id/run_id（目前仅有 LiteLLM 日志降噪；尚未系统化打点/结构化日志）
-- [ ] **最小测试集**：覆盖 provider registry、session 对齐、tool_result 截断、tool_call_id 规范化（未实现）
+- [ ] **完善配置与身份约定**：补齐“用户目录 vs workspace”的分层配置文件方案，以及跨 run 的 `run_id` 记录/查询约定，对齐 PRD 3.9.4 的身份设计。
+- [ ] **落地 ContextBuilder 与 skills/memory 集成**：按照 PRD 3.4/3.3/3.6，将 bootstrap（AGENTS/SOUL/USER/TOOLS）、skills summary/always skills、memory consolidation 的最小闭环串到 ContextBuilder 中。
+- [ ] **补齐 LiteLLMProvider 与 provider 配置**：为不同 provider/gateway 建立可配置的 drop_params 表与最小可用配置（至少 1 个标准 provider + 1 个网关的 out-of-the-box 体验）。
+- [ ] **实现 web/spawn/cron/mcp 工具与 PocketFlow glue**：完成 web 工具、spawn/cron/mcp 接口的 schema/空实现，并打通 PocketFlow Flow Runner + 基础节点（`ToolExecNode`/`ChatNode`）与 AgentLoop/Tools/Session。
+- [ ] **在 tiangong-research 落地 3 个场景**：为 Test/Optimize/Python 三个 Agent 定义最小可运行的 flow + skills + demo（分别覆盖失败修复闭环、plan-only 优化、Spec→实现→自测链路）。
