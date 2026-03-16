@@ -4,11 +4,11 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from .fs import _resolve
-from .registry import Tool
+from tiangong_core.skills.adapters.fs import _resolve
+from tiangong_core.skills.runtime import SkillFn
 
 
-def make_shell_tools(*, workspace: Path, restrict_to_workspace: bool, timeout_s: int) -> list[Tool]:
+def make_shell_skills(*, workspace: Path, restrict_to_workspace: bool, timeout_s: int) -> list[SkillFn]:
     def exec_cmd(args: dict[str, Any]) -> dict[str, Any]:
         cmd = str(args.get("command") or "")
         cwd_raw = args.get("cwd")
@@ -30,4 +30,8 @@ def make_shell_tools(*, workspace: Path, restrict_to_workspace: bool, timeout_s:
         "properties": {"command": {"type": "string"}, "cwd": {"type": "string"}},
         "required": ["command"],
     }
-    return [Tool(name="shell.exec", description="Execute a shell command", parameters=schema, executor=exec_cmd)]
+    return [SkillFn(name="shell.exec", description="Execute a shell command", parameters=schema, executor=exec_cmd)]
+
+
+__all__ = ["make_shell_skills"]
+

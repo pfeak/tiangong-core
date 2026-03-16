@@ -5,11 +5,11 @@ from typing import Any
 
 from tiangong_core.bus.events import OutboundMessage
 from tiangong_core.bus.queue import MessageBus
-from tiangong_core.tools.registry import Tool
+from tiangong_core.skills.runtime import SkillFn
 
 
 @dataclass(frozen=True)
-class MessageToolContext:
+class MessageSkillContext:
     bus: MessageBus
     channel: str
     chat_id: str
@@ -17,7 +17,7 @@ class MessageToolContext:
     metadata: dict[str, Any]
 
 
-def make_message_tools(ctx: MessageToolContext) -> list[Tool]:
+def make_message_skills(ctx: MessageSkillContext) -> list[SkillFn]:
     def send(args: dict[str, Any]) -> dict[str, Any]:
         content = str(args.get("content") or "")
         ctx.bus.publish_outbound(
@@ -36,4 +36,15 @@ def make_message_tools(ctx: MessageToolContext) -> list[Tool]:
         "properties": {"content": {"type": "string"}},
         "required": ["content"],
     }
-    return [Tool(name="message.send", description="Send a message to the current channel", parameters=schema, executor=send)]
+    return [
+        SkillFn(
+            name="message.send",
+            description="Send a message to the current channel",
+            parameters=schema,
+            executor=send,
+        )
+    ]
+
+
+__all__ = ["MessageSkillContext", "make_message_skills"]
+

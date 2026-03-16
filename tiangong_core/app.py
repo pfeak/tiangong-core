@@ -12,10 +12,13 @@ from tiangong_core.config import AppConfig
 from tiangong_core.providers.litellm_provider import LiteLLMProvider
 from tiangong_core.runtime.identity import load_or_create_identity
 from tiangong_core.session.manager import SessionManager
-from tiangong_core.tools.fs import make_fs_tools
-from tiangong_core.tools.message import MessageToolContext, make_message_tools
-from tiangong_core.tools.registry import ToolRegistry
-from tiangong_core.tools.shell import make_shell_tools
+from tiangong_core.skills.runtime import SkillsRuntime
+from tiangong_core.skills.adapters.fs import make_fs_skills
+from tiangong_core.skills.adapters.message import MessageSkillContext, make_message_skills
+from tiangong_core.skills.adapters.shell import make_shell_skills
+from tiangong_core.skills.adapters.cron import make_cron_skills
+from tiangong_core.skills.adapters.spawn import make_spawn_skills
+from tiangong_core.skills.adapters.mcp import make_mcp_skills
 from tiangong_core.utils.ids import new_id
 
 
@@ -50,18 +53,18 @@ class TiangongApp:
         # 默认：按 channel + chat_id
         return f"{channel}:{chat_id}"
 
-    def _build_tools(self, inbound: InboundMessage, runtime_metadata: dict[str, Any]) -> ToolRegistry:
-        reg = ToolRegistry()
-        for t in make_fs_tools(workspace=self.workspace, restrict_to_workspace=self.config.tools.restrict_to_workspace):
-            reg.register(t)
-        for t in make_shell_tools(
+    def _build_skills(self, inbound: InboundMessage, runtime_metadata: dict[str, Any]) -> SkillsRuntime:
+        rt = SkillsRuntime()
+        for s in make_fs_skills(workspace=self.workspace, restrict_to_workspace=self.config.tools.restrict_to_workspace):
+            rt.register(s)
+        for s in make_shell_skills(
             workspace=self.workspace,
             restrict_to_workspace=self.config.tools.restrict_to_workspace,
             timeout_s=self.config.tools.shell_timeout_s,
         ):
-            reg.register(t)
-        for t in make_message_tools(
-            MessageToolContext(
+            rt.register(s)
+        for s in make_message_skills(
+            MessageSkillContext(
                 bus=self.bus,
                 channel=inbound.channel,
                 chat_id=inbound.chat_id,
@@ -69,8 +72,15 @@ class TiangongApp:
                 metadata=runtime_metadata,
             )
         ):
-            reg.register(t)
-        return reg
+            rt.register(s)
+        # 预留 cron/subagent/mcp 三类能力的注入入口，均由各自的 feature flag 控制是否生效。
+        for s in make_cron_skills():
+            rt.register(s)
+        for s in make_spawn_skills():
+            rt.register(s)
+        for s in make_mcp_skills():
+            rt.register(s)
+        return rt
 
     def run_once(self, inbound: InboundMessage) -> None:
         # runtime metadata: app identity + per-run id + inbound extras
@@ -101,10 +111,10 @@ class TiangongApp:
             return
 
         ctx = self.ctx_builder.build()
-        tools = self._build_tools(inbound, runtime_metadata)
+        skills = self._build_skills(inbound, runtime_metadata)
         loop = AgentLoop(
             provider=self.provider,
-            tools=tools,
+            skills=skills,
             sessions=self.sessions,
             model=self.config.agent.model,
             max_iterations=self.config.agent.max_tool_iterations,

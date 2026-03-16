@@ -7,7 +7,7 @@ import logging
 
 from tiangong_core.providers.base import LLMProvider
 from tiangong_core.session.manager import SessionManager
-from tiangong_core.tools.registry import ToolRegistry
+from tiangong_core.skills.runtime import SkillsRuntime
 
 
 def _truncate(s: str, max_chars: int) -> str:
@@ -32,14 +32,14 @@ class AgentLoop:
         self,
         *,
         provider: LLMProvider,
-        tools: ToolRegistry,
+        skills: SkillsRuntime,
         sessions: SessionManager,
         model: str,
         max_iterations: int,
         tool_result_max_chars: int,
     ) -> None:
         self._provider = provider
-        self._tools = tools
+        self._skills = skills
         self._sessions = sessions
         self._model = model
         self._max_iter = max_iterations
@@ -74,7 +74,7 @@ class AgentLoop:
             }
         )
 
-        tool_defs = self._tools.get_definitions()
+        tool_defs = self._skills.get_definitions()
         run_id = str(runtime_metadata.get("run_id") or "")
 
         turn_records: list[dict[str, Any]] = []
@@ -163,7 +163,7 @@ class AgentLoop:
                     )
                 except Exception:
                     pass
-                out = self._tools.execute(c.name, c.arguments)
+                out = self._skills.execute(c.name, c.arguments)
                 out = _truncate(out, self._tool_max)
                 tool_msg = {"role": "tool", "tool_call_id": c.id, "content": out, "metadata": runtime_metadata}
                 messages.append(tool_msg)

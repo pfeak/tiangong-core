@@ -1,6 +1,6 @@
 # Tiangong 双仓分层：内核（tiangong-core）与实践（tiangong-research）PRD/架构设计（v0.1）
 
-> 参考：`taichu` 的 PocketFlow/LiteLLM 节点执行模式；`nanobot` 的 providers/bus/channel/session/memory/cron/subagent/loop/skills/cli 等内核构件。
+> 参考：`taichu` 的 PocketFlow 节点/图执行模式（仅作为编排抽象参考）；`nanobot` 的 providers/bus/channel/session/memory/cron/subagent/loop/skills/cli 等内核构件。
 
 ---
 
@@ -26,10 +26,10 @@
 
 #### 2.1.1 `tiangong-core`（平台内核）
 
-- **运行时核心**：AgentLoop（消息驱动、可迭代 tool-calls、可取消/限迭代）
+- **运行时核心**：AgentLoop（消息驱动、可迭代 skill-calls（底层为 function calling）、可取消/限迭代）
 - **上下文系统**：ContextBuilder（bootstrap + memory + skills + runtime metadata）
 - **模型接入**：Providers（LiteLLM 为主，支持直连/本地/网关/OAuth 预留）
-- **工具系统**：ToolRegistry（fs/shell/web/message/spawn/cron/mcp 等）
+- **技能系统**：Skills（fs/shell/web/message/spawn/cron/mcp 等都以 skill 形态动态注入与调度；不再存在独立“工具分层”）
 - **会话与记忆**：SessionManager（jsonl append-only）、MemoryStore + Consolidator（写 MEMORY/HISTORY）
 - **通道与总线**：Channel + MessageBus（解耦输入输出）
 - **定时与后台任务**：CronService、Heartbeat（可选）
@@ -39,7 +39,7 @@
 #### 2.1.2 `tiangong-research`（场景工程）
 
 - **只做策略与组合**：自定义 Agent/Flow/Skills（可复用 core 的公共能力）
-- **不重复造轮子**：不再实现 provider/bus/session/tools/cli 等内核
+- **不重复造轮子**：不再实现 provider/bus/session/cli 等内核
 - **输出可验证的实践**：场景 demo、评测脚本、最佳实践沉淀
 
 ### 2.2 核心消息流（message-driven turn）
@@ -48,10 +48,10 @@
 2. Channel → Bus 投递 `InboundMessage`（带上 agent 唯一身份信息，见 3.9.4）
 3. SessionManager 取回 session 历史（append-only）
 4. ContextBuilder 拼装 system prompt + bootstrap + memory + skills + runtime metadata + user 输入
-5. AgentLoop 调用 Provider → 得到文本或 tool_calls
-6. ToolRegistry 执行工具 → 写入 tool_result 消息
+5. AgentLoop 调用 Provider → 得到文本或 skill_calls（底层为 function calling）
+6. SkillsRuntime 执行技能 → 写入 skill_result 消息
 7. 循环直到 final/stop/max_iterations
-8. 保存 turn（截断超大 tool_result、过滤“空 assistant”毒化历史）
+8. 保存 turn（截断超大 skill_result、过滤“空 assistant”毒化历史）
 9. Bus 下发 `OutboundMessage` → Channel 发送输出
 
 ---
@@ -70,11 +70,11 @@
 
 #### 3.1.2 核心接口（建议）
 
-- `LLMProvider.chat(messages, tools=None, model=None, generation=None, tool_choice=None, reasoning_effort=None) -> LLMResponse`
+- `LLMProvider.chat(messages, skills=None, model=None, generation=None, skill_choice=None, reasoning_effort=None) -> LLMResponse`（协议层仍以 function calling 形状传递）
 - `LLMProvider.chat_with_retry(...) -> LLMResponse`
 - `LLMResponse`：
   - `content: str | None`
-  - `tool_calls: list[ToolCallRequest]`
+  - `skill_calls: list[SkillCallRequest]`（协议层为 function calling/tool_calls 形状）
   - `finish_reason: str`
   - `usage: dict`
   - `reasoning_content?: str | None`
@@ -85,7 +85,7 @@
 参考 `nanobot/providers/litellm_provider.py` 的成熟实践：
 
 - **消息 sanitize**：丢弃非标准 key；补齐 assistant content；保留 provider 特定字段（如 anthropic 的 `thinking_blocks`）
-- **tool_call_id 规范化**：映射到短的安全 ID 并保持 tool 与 assistant tool_calls 的一致
+- **call_id 规范化**：映射到短的安全 ID 并保持 call 与 assistant（协议字段 `tool_call_id`）的一致
 - **drop_params**：避免某些模型拒参（例如推理参数、cache_control 等）
 - **模型解析**：配合 Provider Registry 完成 gateway/local/standard provider 的路由策略
 
@@ -97,56 +97,35 @@
 - `find_by_model(model)`：标准 provider 匹配（按关键字或显式 prefix）
 - `find_gateway(provider_name, api_key, api_base)`：网关/本地识别（优先级：provider_name → key prefix → api_base keyword）
 
-### 3.2 Tools（工具系统）
-
-#### 3.2.1 设计目标
-
-- 统一工具 schema（OpenAI tools/function calling 形状）
-- 统一执行返回（可直接写入 tool 消息 content）
-- 支持按 workspace 限制、超时、权限策略
-- 支持工具路由上下文（channel/chat/message_id）以便跨通道发送/回调
-
-#### 3.2.2 ToolRegistry（建议能力）
-
-- `register(tool)`
-- `get_definitions() -> list[dict]`
-- `execute(name, arguments) -> str`
-
-#### 3.2.3 默认工具集合（v0.1）
-
-- **fs**：read/write/edit/list（支持 restrict_to_workspace）
-- **shell**：exec（timeout、PATH append、restrict_to_workspace）
-- **web**：search/fetch（**v0.1 不在 core 内自研实现，仅通过外部 Web 搜索能力集成；推荐直接复用云厂商 Web 搜索能力，例如阿里云百炼 Web 搜索，参考文档：`https://help.aliyun.com/zh/model-studio/web-search#312c12c262fsr`）
-- **message**：向指定 channel/chat 发送消息（CLI 下可退化为 stdout）
-- **spawn**：子智能体（3.8）
-- **cron**：定时任务（3.7，可选但建议预留）
-- **mcp**：将 MCP 工具动态注册到 ToolRegistry（可选，至少预留接口）
-
-#### 3.2.4 与 taichu 工具命名的兼容
-
-`taichu` 有 `{toolset}_{tool}` 的命名方式（例如 `finish_finish`）。建议 core 里统一为：
-
-- 命名规范：`{namespace}.{tool}`（例如 `fs.read`、`web.search`、`agent.spawn`）
-- 兼容层：支持别名映射（如 `finish_finish` → `agent.finish`），保证迁移成本可控
-
-### 3.3 Skills（技能：文档化指令包）
+### 3.2 Skills（技能：文档化指令包）
 
 参考 `nanobot/skills/README.md` 与 skill-creator 体系。
 
-#### 3.3.1 约定
+#### 3.2.1 约定
 
 - workspace：`skills/<skill-name>/SKILL.md`
 - 文件结构：YAML frontmatter + Markdown 指令内容
 - 支持 always skills（默认常驻）
 
-#### 3.3.2 SkillsLoader（建议）
+#### 3.2.2 SkillsLoader（建议）
 
 - `list_skills() -> metadata`
 - `get_always_skills() -> list[str]`
 - `load_skills_for_context(names) -> str`
 - `build_skills_summary() -> str`（只提供概要与可用性，避免 system prompt 膨胀）
 
-#### 3.3.3 实现边界（v0.1 建议）
+#### 3.2.3 SkillsRuntime（skill = 唯一可调用能力入口）
+
+- **统一“可调用能力”来源**：所有可被模型调用的能力都以 skill 形态暴露；不再维护独立的“工具层/注册表”。
+- **动态决定可用集合**：像 `nanobot` 的 skills 一样，由“上下文 + 策略 + 安全约束”决定本轮可用 skills（以及其 function calling schema）。
+- **能力适配器**（v0.1 形态）：fs/shell/web/message/spawn/cron/mcp 都作为“skills 的适配器/实现”存在，其中：
+  - `mcp`：将 MCP 能力以 skill schema 的方式动态注入（至少预留接口）
+  - `web`：v0.1 不在 core 内自研实现，仅通过外部 Web 搜索能力集成；推荐直接复用云厂商 Web 搜索能力（例如阿里云百炼 Web 搜索，参考文档：`https://help.aliyun.com/zh/model-studio/web-search#312c12c262fsr`）
+- **建议接口形状**：
+  - `get_definitions() -> list[dict]`（function calling 形状）
+  - `execute(name, arguments) -> str`（结果可直接写入 skill_result）
+
+#### 3.2.4 实现边界（v0.1 建议）
 
 - **core 负责加载与注入**：`tiangong-core` 内实现 `SkillsLoader`（建议位置：`tiangong_core/agent/skills.py`），并在 `ContextBuilder` 中使用“渐进式加载”策略：
   - **默认注入 summary**（仅名称/描述/路径/可用性），避免 system prompt 膨胀
@@ -166,7 +145,7 @@
 - `AGENTS.md`：行为准则/工作方式
 - `SOUL.md`：人格/语气（可选）
 - `USER.md`：用户偏好（可选）
-- `TOOLS.md`：工具说明（可选）
+- `SKILLS.md`：技能说明（可选）
 
 #### 3.4.2 Runtime metadata 注入策略
 
@@ -201,12 +180,12 @@
 
 #### 3.5.2 读取策略
 
-- `get_history(max_messages)`：只返回未 consolidated 段；从 user turn 对齐，避免孤儿 tool_result
+- `get_history(max_messages)`：只返回未 consolidated 段；从 user turn 对齐，避免孤儿 skill_result
 
 #### 3.5.3 保存策略
 
-- 截断超大 tool_result（避免上下文爆炸与文件膨胀）
-- 过滤“空 assistant 且无 tool_calls”的消息（避免毒化上下文）
+- 截断超大 skill_result（避免上下文爆炸与文件膨胀）
+- 过滤“空 assistant 且无 skill_calls”的消息（避免毒化上下文）
 - 错误响应（finish_reason=error）不落盘或以安全方式落盘（避免 400 loop）
 
 ### 3.6 Memory（长期记忆与压缩）
@@ -304,14 +283,14 @@
 参考 `nanobot/agent/loop.py` 的能力集合：
 
 - max_iterations 保护
-- tool_result 截断
+- skill_result 截断
 - progress 回调（将“过程/工具提示”作为 OutboundMessage 流式发送）
 - /stop、/restart（CLI 环境可先不做 restart，保留 stop）
 - `process_direct`：CLI/cron 直接调用，不必走 channel/bus
 
 ### 3.11 PocketFlow（节点/流程编排：节点管理）
 
-参考 `taichu` 的 `pocketflow.Node`（例如 taichu 的 ExecNode 思路）并与 core 的 Provider/ToolRegistry/Session/Context 打通。
+参考 `taichu` 的 `pocketflow.Node`（例如 taichu 的 ExecNode 思路）并与 core 的 Provider/SkillsRuntime/Session/Context 打通。
 
 #### 3.11.1 两层抽象
 
@@ -326,7 +305,7 @@
 
 #### 3.11.3 core 提供的基础节点（建议 v0.1）
 
-- `ToolExecNode`：工具调用闭环节点（等价于 taichu 的 ExecNode 思路，但使用 core 的统一组件）
+- `SkillExecNode`：技能调用闭环节点（等价于 taichu 的 ExecNode 思路，但使用 core 的统一组件）
 - `ChatNode`：纯对话节点（无工具/或只少量工具）
 - `ReportNode`（可选）：结构化输出与落盘
 
@@ -337,7 +316,7 @@
 ### 4.1 原则
 
 - 只写“场景策略/组合”，不复制 core 的基础设施
-- 使用 core 的 public API：providers/tools/session/context/loop/flow
+- 使用 core 的 public API：providers/skills/session/context/loop/flow
 
 ### 4.2 第一版场景（暂定）
 
@@ -369,8 +348,8 @@
 
 - `providers.*`：api_key / api_base / extra_headers
 - `agents.defaults`：model/temperature/max_tokens/reasoning_effort/context_window_tokens/max_tool_iterations/workspace
-- `tools.exec`：timeout/path_append/restrict_to_workspace
-- `tools.web`：search api_key / proxy
+- `skills.exec`：timeout/path_append/restrict_to_workspace
+- `skills.web`：search api_key / proxy
 - `channels.*`：enabled/allow_from/凭证
 - `gateway`：port/cron/heartbeat（可选）
 
@@ -426,10 +405,10 @@ Provider Registry + LiteLLMProvider 的最小可用配置（out-of-the-box）：
 ### 7.1 tiangong-core 必须具备
 
 - Providers：LiteLLMProvider + registry（至少覆盖常用 provider/gateway）
-- Tools：fs + shell +（可选 web）+ message（CLI 可退化）
+- Skills：fs + shell +（可选 web）+ message（CLI 可退化；其余能力如 cron/spawn/mcp 以 skill 形态预留/注入）
 - Session：jsonl 持久化（append-only）
 - Context：bootstrap + memory + skills summary + runtime metadata
-- Loop：tool-calls 迭代、max_iterations、tool_result 截断
+- Loop：skill-calls 迭代、max_iterations、skill_result 截断
 - PocketFlow glue：可运行的基础节点与 flow runner
 - CLI：agent（单次/交互）
 
@@ -446,7 +425,7 @@ Provider Registry + LiteLLMProvider 的最小可用配置（out-of-the-box）：
 ### 8.1 tiangong-core
 
 - `tiangong_core/providers/`：`base.py`, `litellm_provider.py`, `registry.py`, `custom.py`, `azure.py`…
-- `tiangong_core/tools/`：`registry.py`, `fs.py`, `shell.py`, `web.py`, `message.py`, `cron.py`, `spawn.py`, `mcp.py`
+- `tiangong_core/skills/`：`runtime.py`, `adapters/`（fs/shell/web/message/cron/spawn/mcp…）
 - `tiangong_core/agent/`：`loop.py`, `context.py`, `memory.py`, `skills.py`, `subagent.py`
 - `tiangong_core/session/`：`manager.py`
 - `tiangong_core/bus/`：`events.py`, `queue.py`
@@ -467,7 +446,7 @@ Provider Registry + LiteLLMProvider 的最小可用配置（out-of-the-box）：
 
 ## 9. 风险与对策（提前规避）
 
-- **Provider 兼容性问题**（字段/参数/tool_call_id）：sanitize + id 规范化 + drop_params（参考 nanobot）
+- **Provider 兼容性问题**（字段/参数/协议 call_id）：sanitize + id 规范化 + drop_params（参考 nanobot）
 - **上下文毒化导致循环报错**：不持久化错误响应；过滤空 assistant（参考 nanobot）
-- **工具输出过大**：统一截断 +（后续可）落盘引用
+- **技能输出过大**：统一截断 +（后续可）落盘引用
 - **安全边界**：默认 restrict_to_workspace；shell 超时；allowlist 默认 deny

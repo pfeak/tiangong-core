@@ -4,8 +4,8 @@ from typing import Any, List
 from tiangong_core.agent.loop import AgentLoop
 from tiangong_core.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 from tiangong_core.session.manager import SessionManager
-from tiangong_core.tools.registry import ToolRegistry
 from pathlib import Path
+from tiangong_core.skills.runtime import SkillsRuntime
 
 
 @dataclass
@@ -25,7 +25,7 @@ class DummyProvider(LLMProvider):
         return self._responses.pop(0)
 
 
-class DummyTools(ToolRegistry):
+class DummySkills(SkillsRuntime):
     def __init__(self, output: str) -> None:
         super().__init__()
         self.output = output
@@ -54,12 +54,12 @@ def test_tool_result_truncation_and_persistence(tmp_path: Path):
         ]
     )
     long_output = "x" * 500
-    tools = DummyTools(output=long_output)
+    skills = DummySkills(output=long_output)
     sessions = make_session_manager(tmp_path)
 
     loop = AgentLoop(
         provider=provider,
-        tools=tools,
+        skills=skills,
         sessions=sessions,
         model="dummy-model",
         max_iterations=2,
@@ -92,12 +92,12 @@ def test_assistant_with_tool_calls_is_persisted(tmp_path: Path):
             LLMResponse(content="done", tool_calls=[]),
         ]
     )
-    tools = DummyTools(output="ok")
+    skills = DummySkills(output="ok")
     sessions = make_session_manager(tmp_path)
 
     loop = AgentLoop(
         provider=provider,
-        tools=tools,
+        skills=skills,
         sessions=sessions,
         model="dummy-model",
         max_iterations=2,
@@ -124,12 +124,12 @@ class ErrorProvider(LLMProvider):
 
 def test_agent_loop_short_circuits_on_provider_error(tmp_path: Path):
     provider = ErrorProvider()
-    tools = DummyTools(output="ok")
+    skills = DummySkills(output="ok")
     sessions = make_session_manager(tmp_path)
 
     loop = AgentLoop(
         provider=provider,
-        tools=tools,
+        skills=skills,
         sessions=sessions,
         model="dummy-model",
         max_iterations=2,
@@ -162,12 +162,12 @@ def test_agent_loop_respects_stop_flag_and_persists_partial_turn(tmp_path: Path,
             LLMResponse(content="should-not-be-used", tool_calls=[]),
         ]
     )
-    tools = DummyTools(output="ok")
+    skills = DummySkills(output="ok")
     sessions = make_session_manager(tmp_path)
 
     loop = AgentLoop(
         provider=provider,
-        tools=tools,
+        skills=skills,
         sessions=sessions,
         model="dummy-model",
         max_iterations=2,

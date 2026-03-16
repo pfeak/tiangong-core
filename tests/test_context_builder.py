@@ -23,6 +23,7 @@ def test_context_builder_aggregates_bootstrap_skills_and_memory(tmp_path: Path) 
     (skills_root / "always-skill").mkdir(parents=True)
     (skills_root / "always-skill" / "SKILL.md").write_text(
         """---
+name: always-skill
 title: always
 description: always on skill
 always: true
@@ -34,6 +35,7 @@ ALWAYS BODY
     (skills_root / "other-skill").mkdir(parents=True)
     (skills_root / "other-skill" / "SKILL.md").write_text(
         """---
+name: other-skill
 title: other
 description: other skill
 ---

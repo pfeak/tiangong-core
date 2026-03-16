@@ -4,7 +4,7 @@ import difflib
 from pathlib import Path
 from typing import Any
 
-from .registry import Tool
+from tiangong_core.skills.runtime import SkillFn
 
 
 def _resolve(workspace: Path, p: str, restrict: bool) -> Path:
@@ -20,7 +20,7 @@ def _resolve(workspace: Path, p: str, restrict: bool) -> Path:
     return pp
 
 
-def make_fs_tools(*, workspace: Path, restrict_to_workspace: bool) -> list[Tool]:
+def make_fs_skills(*, workspace: Path, restrict_to_workspace: bool) -> list[SkillFn]:
     def read(args: dict[str, Any]) -> dict[str, Any]:
         path = _resolve(workspace, str(args.get("path") or ""), restrict_to_workspace)
         text = path.read_text(encoding="utf-8")
@@ -69,8 +69,12 @@ def make_fs_tools(*, workspace: Path, restrict_to_workspace: bool) -> list[Tool]
     }
 
     return [
-        Tool(name="fs.read", description="Read a text file", parameters=schema_path, executor=read),
-        Tool(name="fs.write", description="Write a text file (overwrite)", parameters=schema_write, executor=write),
-        Tool(name="fs.list", description="List directory entries", parameters=schema_path, executor=list_dir),
-        Tool(name="fs.edit", description="Replace one occurrence in a file", parameters=schema_edit, executor=edit),
+        SkillFn(name="fs.read", description="Read a text file", parameters=schema_path, executor=read),
+        SkillFn(name="fs.write", description="Write a text file (overwrite)", parameters=schema_write, executor=write),
+        SkillFn(name="fs.list", description="List directory entries", parameters=schema_path, executor=list_dir),
+        SkillFn(name="fs.edit", description="Replace one occurrence in a file", parameters=schema_edit, executor=edit),
     ]
+
+
+__all__ = ["make_fs_skills", "_resolve"]
+

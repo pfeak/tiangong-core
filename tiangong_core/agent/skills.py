@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
 from typing import Iterable
+import json
+import shutil
 
 
 @dataclass(frozen=True)
@@ -11,6 +13,8 @@ class Skill:
     name: str
     title: str
     description: str
+    homepage: str
+    metadata: object | None
     always: bool
     tags: tuple[str, ...]
     source: str  # "workspace" | "builtin"
@@ -101,6 +105,12 @@ def _parse_scalar_or_inline_list(v: str) -> object:
         if not inner:
             return []
         return [x.strip().strip("'").strip('"') for x in inner.split(",") if x.strip()]
+    # allow JSON inline objects/arrays (nanobot skills commonly use `metadata: {...}`)
+    if (vv.startswith("{") and vv.endswith("}")) or (vv.startswith("[") and vv.endswith("]")):
+        try:
+            return json.loads(vv)
+        except Exception:
+            pass
     # strip quotes if present
     if (vv.startswith('"') and vv.endswith('"')) or (vv.startswith("'") and vv.endswith("'")):
         return vv[1:-1]
@@ -134,6 +144,19 @@ def _as_tags(meta: dict[str, object], key: str = "tags") -> tuple[str, ...]:
         # allow comma-separated
         return tuple(x.strip() for x in v.split(",") if x.strip())
     return ()
+
+
+def _as_obj(meta: dict[str, object], key: str) -> object | None:
+    return meta.get(key)
+
+
+def _escape_xml(s: str) -> str:
+    return (
+        str(s)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
 
 
 class SkillsLoader:
@@ -185,18 +208,39 @@ class SkillsLoader:
         return "\n\n".join(chunks).strip()
 
     def build_skills_summary(self) -> str:
+        """
+        构建 skills 概要，形态参考 nanobot：
+
+        <skills>
+          <skill available="true">
+            <name>...</name>
+            <description>...</description>
+            <location>/abs/path/to/skill/SKILL.md</location>
+          </skill>
+          ...
+        </skills>
+
+        其中 available 当前版本全部为 true；后续可按 metadata.requires 计算。
+        """
         skills = self.list_skills()
         if not skills:
             return ""
-        lines: list[str] = [
-            "## Skills",
-            "可用技能（默认仅注入概要；always skills 会自动常驻；如需全文可按需加载）：",
-        ]
+
+        lines: list[str] = ["<skills>"]
         for s in skills:
-            title = s.title or s.name
-            always = " (always)" if s.always else ""
-            desc = f" — {s.description}" if s.description else ""
-            lines.append(f"- {s.name}: {title}{always}{desc} [{s.source}]")
+            name = _escape_xml(s.name)
+            desc = _escape_xml(s.description or s.title or s.name)
+            location = s.path  # already string
+
+            # 预留：后续可从 metadata 中解析 requires，并结合 shutil.which/env 判定
+            available = "true"
+
+            lines.append(f'  <skill available="{available}">')
+            lines.append(f"    <name>{name}</name>")
+            lines.append(f"    <description>{desc}</description>")
+            lines.append(f"    <location>{location}</location>")
+            lines.append("  </skill>")
+        lines.append("</skills>")
         return "\n".join(lines).strip()
 
     def _iter_workspace_skills(self) -> Iterable[Skill]:
@@ -209,13 +253,18 @@ class SkillsLoader:
                 text = p.read_text(encoding="utf-8")
             except Exception:
                 continue
-            name = p.parent.name
+            folder_name = p.parent.name
             meta, body = _split_frontmatter(text)
+            meta_name = _as_str(meta, "name", default="")
+            # nanobot/OpenClaw 约定：frontmatter.name 与目录名一致；不一致时以目录名为准（并继续加载）
+            name = meta_name if meta_name and meta_name == folder_name else folder_name
             out.append(
                 Skill(
                     name=name,
                     title=_as_str(meta, "title", default=name),
                     description=_as_str(meta, "description", default=""),
+                    homepage=_as_str(meta, "homepage", default=""),
+                    metadata=_as_obj(meta, "metadata"),
                     always=_as_bool(meta, "always", default=False),
                     tags=_as_tags(meta, "tags"),
                     source="workspace",
@@ -239,17 +288,21 @@ class SkillsLoader:
                 except Exception:
                     continue
                 # resource path: <skill-name>/SKILL.md
-                name = getattr(getattr(p, "parent", None), "name", "") or str(p).split("/")[-2]
+                folder_name = getattr(getattr(p, "parent", None), "name", "") or str(p).split("/")[-2]
                 meta, body = _split_frontmatter(text)
+                meta_name = _as_str(meta, "name", default="")
+                name = meta_name if meta_name and meta_name == folder_name else folder_name
                 out.append(
                     Skill(
                         name=name,
                         title=_as_str(meta, "title", default=name),
                         description=_as_str(meta, "description", default=""),
+                        homepage=_as_str(meta, "homepage", default=""),
+                        metadata=_as_obj(meta, "metadata"),
                         always=_as_bool(meta, "always", default=False),
                         tags=_as_tags(meta, "tags"),
                         source="builtin",
-                        path=f"{self._builtin_pkg}:{name}/SKILL.md",
+                        path=f"{self._builtin_pkg}:{folder_name}/SKILL.md",
                         body=body,
                     )
                 )
