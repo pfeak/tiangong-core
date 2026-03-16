@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 from .base import LLMProvider, LLMResponse, ToolCallRequest
@@ -131,7 +132,26 @@ class LiteLLMProvider(LLMProvider):
         if self._api_base:
             payload["api_base"] = self._api_base
 
-        # LiteLLM 对 reasoning_effort 支持因 provider 而异，v0.1 默认丢弃避免拒参
+        # LiteLLM 对 reasoning_effort 支持因 provider 而异，默认不直接透传到 payload；
+        # 通过 ProviderRegistry + env 决定剔除哪些参数，避免网关/直连 provider 拒参。
+        spec = self._registry.find_gateway(api_base=self._api_base, api_key=self._api_key) or self._registry.find_by_model(
+            model_norm
+        )
+        drop_keys: set[str] = set()
+        if spec and spec.drop_params:
+            drop_keys.update(spec.drop_params)
+        if spec:
+            extra = os.getenv(f"TIANGONG_PROVIDER_DROP_PARAMS_{spec.name.upper()}", "")
+            if extra:
+                drop_keys.update(k.strip() for k in extra.split(",") if k.strip())
+
+        # reasoning_effort 始终作为候选剔除字段之一（多数 provider 不支持）
+        drop_keys.add("reasoning_effort")
+
+        for k in drop_keys:
+            if k in payload:
+                payload.pop(k, None)
+
         _ = reasoning_effort
 
         resp = completion(**payload)

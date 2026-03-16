@@ -37,27 +37,51 @@ def _load_dotenv(workspace: Path) -> None:
     """
     Load environment variables from .env files if present.
 
-    Priority:
-    - workspace/.env (when CLI passes --workspace)
-    - repo/.env (when running from project root)
+    Priority（后加载的优先级更高，可以覆盖前面的值）：
+    - 用户目录配置：$TIANGONG_HOME/.env 或 ~/.tiangong/.env
+    - repo/.env（当前工作目录）
+    - workspace/.env（当 CLI 传入 --workspace 时）
 
     Notes:
     - Does NOT override already-set OS env vars.
     """
     try:
-        # `dotenv` (and `python-dotenv`) both expose `load_dotenv` in most setups.
-        from dotenv import load_dotenv  # type: ignore
+        # 使用 dotenv_values 读取后自行合并，才能实现“后加载覆盖前加载”
+        # 同时保证不覆盖 OS env（显式环境变量永远优先）。
+        from dotenv import dotenv_values  # type: ignore
     except Exception:
         return
 
-    ws_env = workspace / ".env"
-    if ws_env.exists():
-        load_dotenv(dotenv_path=ws_env, override=False)
+    os_env_keys = set(os.environ.keys())
+    merged: dict[str, str] = {}
 
-    # fallback: current working directory ".env"
+    # 1) 用户目录配置：$TIANGONG_HOME/.env 或 ~/.tiangong/.env
+    home = Path(os.getenv("TIANGONG_HOME") or Path.home() / ".tiangong")
+    home_env = home / ".env"
+    if home_env.exists():
+        for k, v in dotenv_values(home_env).items():
+            if k and v is not None:
+                merged[str(k)] = str(v)
+
+    # 2) 当前工作目录 ".env"
     cwd_env = Path(".") / ".env"
     if cwd_env.exists():
-        load_dotenv(dotenv_path=cwd_env, override=False)
+        for k, v in dotenv_values(cwd_env).items():
+            if k and v is not None:
+                merged[str(k)] = str(v)
+
+    # 3) workspace/.env：最贴近工作目录，优先级最高
+    ws_env = workspace / ".env"
+    if ws_env.exists():
+        for k, v in dotenv_values(ws_env).items():
+            if k and v is not None:
+                merged[str(k)] = str(v)
+
+    # 应用合并结果：不覆盖 OS env
+    for k, v in merged.items():
+        if k in os_env_keys:
+            continue
+        os.environ[k] = v
 
 
 def load_config(workspace: str | Path | None = None) -> AppConfig:

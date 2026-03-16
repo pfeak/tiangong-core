@@ -15,11 +15,23 @@ class ProviderSpec:
     api_base_keywords: tuple[str, ...] = ()
     is_gateway: bool = False
     strip_model_prefix: bool = True
+    # 针对该 provider/gateway 建议默认剔除的参数（避免拒参），例如 "reasoning_effort"、"extra_headers" 等。
+    drop_params: tuple[str, ...] = ()
 
 
 DEFAULT_SPECS: tuple[ProviderSpec, ...] = (
-    ProviderSpec(name="openai", keywords=("openai", "gpt", "o1", "o3"), litellm_prefix="openai/"),
-    ProviderSpec(name="anthropic", keywords=("anthropic", "claude"), litellm_prefix="anthropic/"),
+    ProviderSpec(
+        name="openai",
+        keywords=("openai", "gpt", "o1", "o3"),
+        litellm_prefix="openai/",
+        drop_params=("reasoning_effort", "extra_headers", "cache_control"),
+    ),
+    ProviderSpec(
+        name="anthropic",
+        keywords=("anthropic", "claude"),
+        litellm_prefix="anthropic/",
+        drop_params=("reasoning_effort", "extra_headers", "cache_control"),
+    ),
     ProviderSpec(
         name="openai-compatible-gateway",
         keywords=("gateway", "openai-compatible"),
@@ -28,6 +40,7 @@ DEFAULT_SPECS: tuple[ProviderSpec, ...] = (
         is_gateway=True,
         litellm_prefix=None,
         strip_model_prefix=False,
+        drop_params=("reasoning_effort", "extra_headers", "cache_control"),
     ),
 )
 

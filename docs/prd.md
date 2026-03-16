@@ -374,6 +374,35 @@
 - `channels.*`：enabled/allow_from/凭证
 - `gateway`：port/cron/heartbeat（可选）
 
+v0.1 实现中的实际约定（env + .env 分层）：
+
+- **环境变量优先级**：显式 OS env 始终最高优先级。
+- **.env 分层加载**（后加载的优先级更高，可以覆盖前面的值）：
+  - 用户目录：`$TIANGONG_HOME/.env` 或 `~/.tiangong/.env`
+  - repo 根目录：`./.env`
+  - workspace：`<workspace>/.env`（例如 CLI 传入 `--workspace` 时）
+- **核心 env 键位**：
+  - `TIANGONG_MODEL`：默认模型（例如 `gpt-4.1-mini`，会通过 Provider Registry 归一化为 `openai/gpt-4.1-mini`）
+  - `TIANGONG_AGENT_NAME`：agent 逻辑名称（写入 `runtime/agent.json` 与 runtime metadata）
+  - `TIANGONG_API_KEY` / `OPENAI_API_KEY`：标准 provider/gateway API key
+  - `TIANGONG_BASE_URL` / `OPENAI_BASE_URL`：标准 provider/gateway API base
+  - `TIANGONG_MAX_TOOL_ITER`：最大工具迭代次数
+  - `TIANGONG_SHELL_TIMEOUT_S`：shell 工具超时时间（秒）
+  - `TIANGONG_RESTRICT_WORKSPACE`：是否限制工具在 workspace 内运行（默认开启）
+
+Provider Registry + LiteLLMProvider 的最小可用配置（out-of-the-box）：
+
+- **标准 provider（OpenAI 系）**：
+  - `AgentConfig.model` 默认为 `openai/gpt-4.1-mini`
+  - 对未带前缀的 model（如 `gpt-4.1-mini`）自动归一化为 `openai/gpt-4.1-mini`
+  - `ProviderSpec(name="openai", drop_params=("reasoning_effort", "extra_headers", "cache_control"))`
+- **OpenAI-compatible 网关**：
+  - 通过 `ProviderSpec(name="openai-compatible-gateway", is_gateway=True, detect_by_key_prefix=("sk-",), api_base_keywords=("openai", "v1"))` 识别
+  - 允许通过 `TIANGONG_API_KEY` + `TIANGONG_BASE_URL` 指向自建/第三方网关
+  - 默认也会剔除 `reasoning_effort`/`extra_headers`/`cache_control` 等高风险参数，避免网关侧拒参
+
+此外，可通过环境变量 `TIANGONG_PROVIDER_DROP_PARAMS_<PROVIDER_NAME>`（例如 `TIANGONG_PROVIDER_DROP_PARAMS_OPENAI="reasoning_effort,cache_control"`）为指定 provider/gateway 追加自定义的 drop_params。
+
 ### 5.2 运行模式（建议）
 
 - CLI 单次：`tiangong agent -m "..."`
