@@ -26,6 +26,18 @@ DEFAULT_SPECS: tuple[ProviderSpec, ...] = (
         litellm_prefix="openai/",
         drop_params=("reasoning_effort", "extra_headers", "cache_control"),
     ),
+    # 阿里云百炼 DashScope（OpenAI 兼容 /qwen 系列），用于识别并挂载联网搜索等扩展能力
+    ProviderSpec(
+        name="dashscope",
+        keywords=("dashscope", "qwen", "qwen3", "qwen3.5"),
+        litellm_prefix=None,
+        # DashScope 也是 sk- 前缀，但这里不标记为 gateway，避免与通用 openai-compatible-gateway 规则混淆
+        detect_by_key_prefix=(),
+        api_base_keywords=("dashscope.aliyuncs.com",),
+        is_gateway=False,
+        strip_model_prefix=True,
+        drop_params=("extra_headers", "cache_control"),
+    ),
     ProviderSpec(
         name="anthropic",
         keywords=("anthropic", "claude"),

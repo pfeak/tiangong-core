@@ -14,14 +14,8 @@
 
 ## 1. tiangong-core：最小闭环（PRD 7.1 必须具备）
 
-### 1.1 Providers（PRD 3.1）
-
-- [ ] **tool_call_id 规范化**：如果 provider 返回空/重复/超长 id，需生成稳定安全 id 并保证 tool 消息一致（PRD 3.1.3；目前实现主要是“透传/容错解析”）
-- [ ] **错误短路策略**：对 400（非法消息序列）等可判定错误，避免写入“毒化”历史并给出可操作提示（PRD 9；当前已做部分过滤，但缺少系统化策略与测试）
-
 ### 1.2 Tools（PRD 3.2）
 
-- [ ] **web 工具（可选但建议做）**：`web.search/web.fetch`（含代理与 key 配置，PRD 3.2.3）
 - [ ] **工具命名兼容层（可选）**：支持别名映射（PRD 3.2.4），至少在 ToolRegistry 层预留 alias 表
 
 ### 1.3 Session（PRD 3.5）
@@ -53,7 +47,4 @@
 
 ## 3. 建议执行顺序（只按 core 仓）
 
-- [ ] **补齐测试**：Session + Loop 的关键回归点（“tool_calls assistant 必落盘”“tool_result 截断”“stop/对齐策略”）
-- [ ] **补齐 Provider 的 tool_call_id 规范化与错误短路**（把 PRD 3.1.3/9 变成可测的行为）
-- [ ] **实现 web 工具**（search/fetch）并接入 CLI 最小演示
 - [ ] **再做 PocketFlow glue / cron / spawn / mcp 的接口预留**

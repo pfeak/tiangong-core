@@ -116,7 +116,7 @@
 
 - **fs**：read/write/edit/list（支持 restrict_to_workspace）
 - **shell**：exec（timeout、PATH append、restrict_to_workspace）
-- **web**：search/fetch（可配置代理/搜索 key）
+- **web**：search/fetch（**v0.1 不在 core 内自研实现，仅通过外部 Web 搜索能力集成；推荐直接复用云厂商 Web 搜索能力，例如阿里云百炼 Web 搜索，参考文档：`https://help.aliyun.com/zh/model-studio/web-search#312c12c262fsr`）
 - **message**：向指定 channel/chat 发送消息（CLI 下可退化为 stdout）
 - **spawn**：子智能体（3.8）
 - **cron**：定时任务（3.7，可选但建议预留）

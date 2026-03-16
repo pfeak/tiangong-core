@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Any
 
 from .base import LLMProvider, LLMResponse, ToolCallRequest
@@ -14,6 +15,38 @@ def _truncate(s: str, max_chars: int) -> str:
     if len(s) <= max_chars:
         return s
     return s[: max(0, max_chars - 20)] + "\n…[truncated]\n"
+
+
+def _normalize_tool_call_id(raw_id: Any, used: set[str]) -> str:
+    """
+    将 provider 返回的 tool_call id 规范化为：
+    - 非空字符串
+    - 只包含 [0-9A-Za-z_-]
+    - 长度不超过 64
+    - 在本次响应内唯一
+    """
+    s = str(raw_id or "").strip()
+    # 只保留安全字符
+    s = re.sub(r"[^0-9A-Za-z_-]", "_", s)
+
+    if not s:
+        s = f"call_{len(used) + 1}"
+
+    if len(s) > 64:
+        s = s[:64]
+
+    if s in used:
+        base = s
+        idx = 1
+        candidate = f"{base}_{idx}"
+        # 确保唯一且不超长
+        while candidate in used or len(candidate) > 64:
+            idx += 1
+            suffix = f"_{idx}"
+            candidate = f"{base[: max(1, 64 - len(suffix))]}{suffix}"
+        s = candidate
+
+    return s
 
 
 def _sanitize_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -69,6 +102,7 @@ def _coerce_mapping(obj: Any) -> dict[str, Any]:
 def _parse_tool_calls(resp_message: dict[str, Any]) -> list[ToolCallRequest]:
     calls = resp_message.get("tool_calls") or []
     out: list[ToolCallRequest] = []
+    used_ids: set[str] = set()
     for c in calls:
         cc = _coerce_mapping(c)
         fn = _coerce_mapping(cc.get("function"))
@@ -76,6 +110,8 @@ def _parse_tool_calls(resp_message: dict[str, Any]) -> list[ToolCallRequest]:
         args_raw = fn.get("arguments") if "arguments" in fn else cc.get("arguments")
         if not name:
             continue
+        norm_id = _normalize_tool_call_id(cc.get("id"), used_ids)
+        used_ids.add(norm_id)
         try:
             if isinstance(args_raw, dict):
                 args = args_raw
@@ -83,7 +119,7 @@ def _parse_tool_calls(resp_message: dict[str, Any]) -> list[ToolCallRequest]:
                 args = json.loads(args_raw) if isinstance(args_raw, str) and args_raw.strip() else {}
         except Exception:
             args = {}
-        out.append(ToolCallRequest(id=str(cc.get("id") or ""), name=str(name), arguments=args))
+        out.append(ToolCallRequest(id=norm_id, name=str(name), arguments=args))
     return out
 
 
@@ -151,6 +187,32 @@ class LiteLLMProvider(LLMProvider):
         for k in drop_keys:
             if k in payload:
                 payload.pop(k, None)
+
+        # --- 阿里云百炼 DashScope 联网搜索 / 图文混合等扩展 ---
+        # 当 api_base 指向 DashScope OpenAI 兼容地址时，无论 ProviderSpec 是否被识别成
+        # 通用 openai-compatible-gateway，都启用 dashscope 专属逻辑。
+        # 参考文档：https://help.aliyun.com/zh/model-studio/web-search#312c12c262fsr
+        is_dashscope = "dashscope.aliyuncs.com" in (self._api_base or "").lower()
+        if spec and spec.name == "dashscope":
+            is_dashscope = True
+
+        if is_dashscope:
+            flag = os.getenv("TIANGONG_DASHSCOPE_ENABLE_SEARCH", "").lower()
+            if flag in ("1", "true", "yes", "on"):
+                payload["enable_search"] = True
+                opts_raw = os.getenv("TIANGONG_DASHSCOPE_SEARCH_OPTIONS", "")
+                if opts_raw:
+                    try:
+                        search_options = json.loads(opts_raw)
+                        if isinstance(search_options, dict):
+                            payload["search_options"] = search_options
+                    except Exception:
+                        # 配置错误时静默忽略，避免影响主流程
+                        pass
+
+            img_flag = os.getenv("TIANGONG_DASHSCOPE_ENABLE_TEXT_IMAGE_MIXED", "").lower()
+            if img_flag in ("1", "true", "yes", "on"):
+                payload["enable_text_image_mixed"] = True
 
         _ = reasoning_effort
 

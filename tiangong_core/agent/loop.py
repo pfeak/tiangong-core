@@ -101,7 +101,29 @@ class AgentLoop:
             except Exception:
                 pass
 
-            resp = self._provider.chat_with_retry(messages=messages, tools=tool_defs, model=self._model)
+            try:
+                resp = self._provider.chat_with_retry(messages=messages, tools=tool_defs, model=self._model)
+            except Exception as e:  # noqa: PERF203
+                # 对可判定错误进行“短路”：不写入 assistant/tool 消息，给出可操作提示
+                try:
+                    self._log.exception(
+                        "provider_error",
+                        extra={
+                            "agent_id": runtime_metadata.get("agent_id"),
+                            "run_id": run_id,
+                            "session_key": session_key,
+                            "model": self._model,
+                        },
+                    )
+                except Exception:
+                    pass
+                message = (
+                    "调用模型失败：可能是会话历史包含非法消息序列（例如孤立的 tool/tool_result）"
+                    "，或 Provider/网络配置问题。\n"
+                    f"原始错误：{e}\n"
+                    "建议：尝试使用 /reset 重置会话或检查 TIANGONG_MODEL/Provider 配置。"
+                )
+                return LoopResult(content=message, run_id=run_id)
             assistant_msg: dict[str, Any] = {
                 "role": "assistant",
                 "content": resp.content or "",
