@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+import json
+from collections.abc import Iterable
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
-from typing import Iterable
-import json
-import shutil
 
 
 @dataclass(frozen=True)
@@ -282,7 +281,12 @@ class SkillsLoader:
 
         out: list[Skill] = []
         try:
-            for p in sorted(pkg_root.glob("*/SKILL.md")):
+            # importlib.resources Traversable 的类型标注在不同 Python/typing 组合下不一致；
+            # 这里仅用于遍历资源文件，运行时接口稳定。
+            glob = getattr(pkg_root, "glob", None)
+            if not callable(glob):
+                return out
+            for p in sorted(glob("*/SKILL.md")):
                 try:
                     text = p.read_text(encoding="utf-8")
                 except Exception:

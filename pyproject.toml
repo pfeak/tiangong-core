@@ -1,9 +1,9 @@
 [project]
 name = "tiangong-core"
 version = "0.1.0"
-description = "Add your description here"
+description = "Tiangong agent core runtime: providers, skills, sessions, flow, and CLI."
 readme = "README.md"
-requires-python = ">=3.10.16"
+requires-python = ">=3.10"
 dependencies = [
     "dotenv>=0.9.9",
     "litellm>=1.82.1",
@@ -35,4 +35,25 @@ tiangong_core = ["templates/**/*.md"]
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    "ruff>=0.12.0",
+    "mypy>=1.17.0",
 ]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+# 代码库当前包含少量超长行（多为字符串/注释/配置拼接），先不强制重排以避免无意义 diff。
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_ignores = true
+no_implicit_optional = true
+check_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true

@@ -1,26 +1,14 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List
+from typing import Any
 
 from tiangong_core.agent.subagent import SubagentManager
 from tiangong_core.skills.runtime import SkillFn
 
 
-def _cancel_executor(args: Dict[str, Any]) -> str:
-    subagent_id = str(args.get("subagent_id") or "")
-    return json.dumps(
-        {
-            "ok": True,
-            "message": "spawn.cancel 已请求取消（v0.1：若任务已开始执行，可能无法中断；未开始的任务会被跳过）。",
-            "subagent_id": subagent_id,
-        },
-        ensure_ascii=False,
-    )
-
-
-def make_spawn_skills(*, mgr: SubagentManager) -> List[SkillFn]:
-    def spawn(args: Dict[str, Any]) -> str:
+def make_spawn_skills(*, mgr: SubagentManager) -> list[SkillFn]:
+    def spawn(args: dict[str, Any]) -> str:
         handle = mgr.spawn(
             parent_agent_id=str(args.get("parent_agent_id") or ""),
             name=str(args.get("name") or ""),

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 
+from tiangong_core.agent.subagent import SubagentManager
 from tiangong_core.bus.queue import MessageBus
 from tiangong_core.cron.service import CronService
-from tiangong_core.agent.subagent import SubagentManager
 from tiangong_core.skills.adapters.cron import make_cron_skills
-from tiangong_core.skills.adapters.spawn import make_spawn_skills
 from tiangong_core.skills.adapters.mcp import make_mcp_skills
+from tiangong_core.skills.adapters.spawn import make_spawn_skills
 
 
 def test_cron_skills_always_enabled() -> None:

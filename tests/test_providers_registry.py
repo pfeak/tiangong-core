@@ -1,4 +1,4 @@
-from tiangong_core.providers.registry import ProviderRegistry, DEFAULT_SPECS
+from tiangong_core.providers.registry import DEFAULT_SPECS, ProviderRegistry
 
 
 def test_find_by_model_and_normalize_openai_prefix():
@@ -45,8 +45,6 @@ def test_find_gateway_by_api_base_and_key_prefix():
 
 
 def test_find_gateway_key_only_or_base_only():
-    registry = ProviderRegistry(specs=DEFAULT_SPECS)
-
     # 仅依赖 key 前缀也可以识别（当 api_base_keywords 为空时）
     # 这里通过构造一个只配 key 前缀、不配 api_base_keywords 的 spec 来验证逻辑
     from tiangong_core.providers.registry import ProviderSpec

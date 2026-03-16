@@ -1,7 +1,7 @@
 import pytest
 
-from tiangong_core.channels.cli import CLIChannelConfig, CLIChannel
 from tiangong_core.bus.queue import InMemoryMessageBus
+from tiangong_core.channels.cli import CLIChannel, CLIChannelConfig
 
 
 class DummyBus(InMemoryMessageBus):

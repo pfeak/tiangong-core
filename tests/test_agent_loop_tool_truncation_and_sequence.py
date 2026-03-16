@@ -1,10 +1,10 @@
 from dataclasses import dataclass
-from typing import Any, List
+from pathlib import Path
+from typing import Any
 
 from tiangong_core.agent.loop import AgentLoop
 from tiangong_core.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 from tiangong_core.session.manager import SessionManager
-from pathlib import Path
 from tiangong_core.skills.runtime import SkillsRuntime
 
 
@@ -16,9 +16,9 @@ class _DummyToolCall:
 
 
 class DummyProvider(LLMProvider):
-    def __init__(self, responses: List[LLMResponse]) -> None:
+    def __init__(self, responses: list[LLMResponse]) -> None:
         self._responses = responses
-        self.calls: List[dict[str, Any]] = []
+        self.calls: list[dict[str, Any]] = []
 
     def chat(self, *, messages, tools=None, model=None, tool_choice=None, reasoning_effort=None, generation=None):
         self.calls.append({"messages": messages, "tools": tools, "model": model})
@@ -29,7 +29,7 @@ class DummySkills(SkillsRuntime):
     def __init__(self, output: str) -> None:
         super().__init__()
         self.output = output
-        self.calls: List[dict[str, Any]] = []
+        self.calls: list[dict[str, Any]] = []
 
     def get_definitions(self) -> list[dict[str, Any]]:
         return []

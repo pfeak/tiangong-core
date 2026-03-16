@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any
 
 from tiangong_core.bus.events import InboundMessage
 from tiangong_core.bus.queue import MessageBus
@@ -44,7 +44,7 @@ class SubagentManager:
         *,
         parent_agent_id: str,
         name: str,
-        payload: Dict[str, Any] | None = None,
+        payload: dict[str, Any] | None = None,
         subtask_id: str | None = None,
     ) -> SubagentHandle:
         """

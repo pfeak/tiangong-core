@@ -1,18 +1,16 @@
 from __future__ import annotations
 
-import types
-from typing import Any, Dict, List
-
 import sys
+from typing import Any
 
 from tiangong_core.providers.litellm_provider import LiteLLMProvider
 
 
 class _DummyLiteLLMModule:
     def __init__(self) -> None:
-        self.last_kwargs: Dict[str, Any] | None = None
+        self.last_kwargs: dict[str, Any] | None = None
 
-    def completion(self, **kwargs: Any) -> Dict[str, Any]:
+    def completion(self, **kwargs: Any) -> dict[str, Any]:
         self.last_kwargs = dict(kwargs)
         # minimal LiteLLM-like response
         return {
@@ -64,12 +62,12 @@ def test_litellm_provider_drops_configured_params(monkeypatch) -> None:
 
 class _DummyLiteLLMModuleWithToolCalls:
     def __init__(self) -> None:
-        self.last_kwargs: Dict[str, Any] | None = None
+        self.last_kwargs: dict[str, Any] | None = None
 
-    def completion(self, **kwargs: Any) -> Dict[str, Any]:
+    def completion(self, **kwargs: Any) -> dict[str, Any]:
         self.last_kwargs = dict(kwargs)
         long_id = "x" * 200
-        tool_calls: List[Dict[str, Any]] = [
+        tool_calls: list[dict[str, Any]] = [
             {
                 "id": "",
                 "type": "function",

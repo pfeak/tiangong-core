@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any
 
 from tiangong_core.cron.service import CronService
 from tiangong_core.skills.runtime import SkillFn
@@ -17,12 +17,12 @@ class CronJobSpec:
     """
 
     cron: str
-    payload: Dict[str, Any]
+    payload: dict[str, Any]
     session_key: str | None = None
 
 
-def make_cron_skills(*, svc: CronService) -> List[SkillFn]:
-    def schedule(args: Dict[str, Any]) -> str:
+def make_cron_skills(*, svc: CronService) -> list[SkillFn]:
+    def schedule(args: dict[str, Any]) -> str:
         spec = CronJobSpec(
             cron=str(args.get("cron", "")),
             payload=dict(args.get("payload") or {}),

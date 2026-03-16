@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .schemas import NodeResult
 from .runner import FlowRunner
+from .schemas import NodeResult
 
 __all__ = ["NodeResult", "FlowRunner"]

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
-from typing import Any, Callable
 import logging
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
 
 from tiangong_core.providers.base import LLMProvider
 from tiangong_core.session.manager import SessionManager

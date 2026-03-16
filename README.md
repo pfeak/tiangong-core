@@ -26,6 +26,13 @@ uv tool dir
 uv tool list
 ```
 
+## 开发环境（Python 版本）
+
+本项目使用 `.python-version` 提供给 `pyenv`/编辑器识别的推荐版本（当前为 `3.10.16`）。
+
+- 如果你的环境里没有该精确补丁版本，也可以使用 **Python 3.10.x**（例如 `3.10.14`）运行与测试。
+- 若你使用 `pyenv` 并遇到 “version is not installed”，请安装对应版本或临时指定已安装版本运行测试。
+
 ## 配置（dotenv）
 
 - 将 `env.example` 复制为 `.env`（放在仓库根目录，或你运行 `tiangong -w <workspace>` 的 workspace 目录里）

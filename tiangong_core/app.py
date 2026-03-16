@@ -1,26 +1,26 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
-import os
 
 from tiangong_core.agent.context import ContextBuilder
 from tiangong_core.agent.loop import AgentLoop
+from tiangong_core.agent.subagent import SubagentManager
 from tiangong_core.bus.events import InboundMessage, OutboundMessage
 from tiangong_core.bus.queue import MessageBus
 from tiangong_core.config import AppConfig
+from tiangong_core.cron.service import CronService
 from tiangong_core.providers.litellm_provider import LiteLLMProvider
 from tiangong_core.runtime.identity import load_or_create_identity
 from tiangong_core.session.manager import SessionManager
-from tiangong_core.skills.runtime import SkillsRuntime
-from tiangong_core.cron.service import CronService
-from tiangong_core.agent.subagent import SubagentManager
+from tiangong_core.skills.adapters.cron import make_cron_skills
 from tiangong_core.skills.adapters.fs import make_fs_skills
+from tiangong_core.skills.adapters.mcp import make_mcp_skills
 from tiangong_core.skills.adapters.message import MessageSkillContext, make_message_skills
 from tiangong_core.skills.adapters.shell import make_shell_skills
-from tiangong_core.skills.adapters.cron import make_cron_skills
 from tiangong_core.skills.adapters.spawn import make_spawn_skills
-from tiangong_core.skills.adapters.mcp import make_mcp_skills
+from tiangong_core.skills.runtime import SkillsRuntime
 from tiangong_core.utils.ids import new_id
 
 
@@ -58,33 +58,41 @@ class TiangongApp:
         # 默认：按 channel + chat_id
         return f"{channel}:{chat_id}"
 
+    @staticmethod
+    def _register_all(rt: SkillsRuntime, skills: list[Any]) -> None:
+        for s in skills:
+            rt.register(s)
+
     def _build_skills(self, inbound: InboundMessage, runtime_metadata: dict[str, Any]) -> SkillsRuntime:
         rt = SkillsRuntime()
-        for s in make_fs_skills(workspace=self.workspace, restrict_to_workspace=self.config.tools.restrict_to_workspace):
-            rt.register(s)
-        for s in make_shell_skills(
-            workspace=self.workspace,
-            restrict_to_workspace=self.config.tools.restrict_to_workspace,
-            timeout_s=self.config.tools.shell_timeout_s,
-        ):
-            rt.register(s)
-        for s in make_message_skills(
-            MessageSkillContext(
-                bus=self.bus,
-                channel=inbound.channel,
-                chat_id=inbound.chat_id,
-                session_key=inbound.session_key,
-                metadata=runtime_metadata,
-            )
-        ):
-            rt.register(s)
+        self._register_all(
+            rt,
+            make_fs_skills(workspace=self.workspace, restrict_to_workspace=self.config.tools.restrict_to_workspace),
+        )
+        self._register_all(
+            rt,
+            make_shell_skills(
+                workspace=self.workspace,
+                restrict_to_workspace=self.config.tools.restrict_to_workspace,
+                timeout_s=self.config.tools.shell_timeout_s,
+            ),
+        )
+        self._register_all(
+            rt,
+            make_message_skills(
+                MessageSkillContext(
+                    bus=self.bus,
+                    channel=inbound.channel,
+                    chat_id=inbound.chat_id,
+                    session_key=inbound.session_key,
+                    metadata=runtime_metadata,
+                )
+            ),
+        )
         # 预留 cron/subagent/mcp 三类能力的注入入口，均由各自的 feature flag 控制是否生效。
-        for s in make_cron_skills(svc=self.cron):
-            rt.register(s)
-        for s in make_spawn_skills(mgr=self.subagents):
-            rt.register(s)
-        for s in make_mcp_skills():
-            rt.register(s)
+        self._register_all(rt, make_cron_skills(svc=self.cron))
+        self._register_all(rt, make_spawn_skills(mgr=self.subagents))
+        self._register_all(rt, make_mcp_skills())
         return rt
 
     def run_once(self, inbound: InboundMessage) -> None:

@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -64,7 +65,7 @@ class SessionManager:
 
     def stop(self, session_key: str, *, metadata: dict[str, Any] | None = None) -> None:
         p = self._paths.stop_file_for(session_key)
-        payload = {"stopped": True}
+        payload: dict[str, Any] = {"stopped": True}
         if metadata:
             payload["metadata"] = metadata
         p.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

@@ -1,15 +1,15 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterable, List
+from typing import Any
 
 from tiangong_core.flow.nodes import BaseNode
 from tiangong_core.flow.nodes.chat import ChatNode
 from tiangong_core.flow.nodes.tool_exec import ToolExecNode
 from tiangong_core.flow.schemas import NodeResult
 
-
-NodeFactory = Callable[[Dict[str, Any]], BaseNode]
+NodeFactory = Callable[[dict[str, Any]], BaseNode]
 
 
 @dataclass(frozen=True)
@@ -20,7 +20,7 @@ class FlowNodeSpec:
 
     id: str
     type: str
-    config: Dict[str, Any]
+    config: dict[str, Any]
 
 
 class FlowRunner:
@@ -30,27 +30,27 @@ class FlowRunner:
     v0.1 仅支持按顺序执行一组节点，不做图遍历/条件跳转。
     """
 
-    def __init__(self, registry: Dict[str, NodeFactory] | None = None) -> None:
-        builtins: Dict[str, NodeFactory] = {
+    def __init__(self, registry: dict[str, NodeFactory] | None = None) -> None:
+        builtins: dict[str, NodeFactory] = {
             "chat": lambda cfg: ChatNode(**cfg),
             "tool_exec": lambda cfg: ToolExecNode(**cfg),
         }
-        self._registry: Dict[str, NodeFactory] = {**builtins, **(registry or {})}
+        self._registry: dict[str, NodeFactory] = {**builtins, **(registry or {})}
 
-    def _make_node(self, type_name: str, config: Dict[str, Any]) -> BaseNode:
+    def _make_node(self, type_name: str, config: dict[str, Any]) -> BaseNode:
         factory = self._registry.get(type_name)
         if not factory:
             raise ValueError(f"unknown node type: {type_name}")
         return factory(config)
 
-    def run(self, specs: Iterable[FlowNodeSpec], shared: Dict[str, Any] | None = None) -> List[NodeResult]:
+    def run(self, specs: Iterable[FlowNodeSpec], shared: dict[str, Any] | None = None) -> list[NodeResult]:
         """
         顺序执行给定的节点列表。
 
         shared 作为跨节点的共享状态，节点的 prep/exec/post 都可以读写。
         """
         shared = shared or {}
-        results: List[NodeResult] = []
+        results: list[NodeResult] = []
         for spec in specs:
             node = self._make_node(spec.type, spec.config)
             prep_res = node.prep(shared)

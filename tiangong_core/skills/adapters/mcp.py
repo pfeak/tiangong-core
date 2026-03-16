@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from typing import List
-
 from tiangong_core.skills.runtime import SkillFn
 
 
-def make_mcp_skills() -> List[SkillFn]:
+def make_mcp_skills() -> list[SkillFn]:
     """
     MCP bridge 接口预留。
 
@@ -17,4 +15,3 @@ def make_mcp_skills() -> List[SkillFn]:
 
 
 __all__ = ["make_mcp_skills"]
-

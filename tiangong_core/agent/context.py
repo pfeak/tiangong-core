@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+import platform
 from dataclasses import dataclass
 from pathlib import Path
-import platform
 
 from tiangong_core.agent.skills import SkillsLoader
-
 
 BOOTSTRAP_FILES = ("AGENTS.md", "SOUL.md", "USER.md", "TOOLS.md")
 

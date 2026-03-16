@@ -4,6 +4,7 @@ import logging
 import os
 import subprocess
 import threading
+from collections.abc import Callable
 from pathlib import Path
 
 import click
@@ -16,12 +17,11 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.text import Text
 
-from tiangong_core.app import TiangongApp
 from tiangong_core.agent.skills import SkillsLoader
+from tiangong_core.app import TiangongApp
 from tiangong_core.channels.cli import CLIChannel, CLIChannelConfig
 from tiangong_core.config import load_config
 from tiangong_core.utils.ids import new_id
-
 
 app = typer.Typer(
     name="tiangong",
@@ -43,10 +43,11 @@ def _history_path(workspace: Path) -> Path:
     return p
 
 
-def _render_ansi(render_fn) -> str:
+def _render_ansi(render_fn: Callable[[Console], None]) -> str:
     ansi_console = Console(
         force_terminal=True,
-        color_system=console.color_system or "standard",
+        # 交由 Rich 自行探测，避免类型标注不一致引发的静态检查噪音
+        color_system=None,
         width=console.width,
     )
     with ansi_console.capture() as capture:
@@ -54,7 +55,7 @@ def _render_ansi(render_fn) -> str:
     return capture.get()
 
 
-def _pt_print(render_fn) -> None:
+def _pt_print(render_fn: Callable[[Console], None]) -> None:
     ansi = _render_ansi(render_fn)
     print_formatted_text(ANSI(ansi), end="")
 
@@ -246,7 +247,7 @@ def agent(
 
     # interactive
     hist = FileHistory(str(_history_path(ws)))
-    session = PromptSession(history=hist, multiline=False, enable_open_in_editor=False)
+    session: PromptSession[str] = PromptSession(history=hist, multiline=False, enable_open_in_editor=False)
     console.print("tiangong CLI（输入 exit 退出；/stop 停止该会话）")
     with patch_stdout():
         while True:

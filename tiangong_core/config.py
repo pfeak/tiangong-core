@@ -48,7 +48,7 @@ def _load_dotenv(workspace: Path) -> None:
     try:
         # 使用 dotenv_values 读取后自行合并，才能实现“后加载覆盖前加载”
         # 同时保证不覆盖 OS env（显式环境变量永远优先）。
-        from dotenv import dotenv_values  # type: ignore
+        from dotenv import dotenv_values
     except Exception:
         return
 

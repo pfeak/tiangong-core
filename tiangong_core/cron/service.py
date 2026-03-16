@@ -5,7 +5,7 @@ import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any
 
 from tiangong_core.bus.events import InboundMessage
 from tiangong_core.bus.queue import MessageBus
@@ -16,7 +16,7 @@ from tiangong_core.utils.ids import new_id
 class CronJob:
     job_id: str
     cron: str
-    payload: Dict[str, Any]
+    payload: dict[str, Any]
     session_key: str | None = None
     created_at: float = 0.0
 
@@ -90,7 +90,7 @@ class CronService:
     def stop(self) -> None:
         self._stop.set()
 
-    def upsert(self, *, cron: str, payload: Dict[str, Any], session_key: str | None = None) -> CronJob:
+    def upsert(self, *, cron: str, payload: dict[str, Any], session_key: str | None = None) -> CronJob:
         job_id = new_id()
         job = CronJob(
             job_id=job_id,

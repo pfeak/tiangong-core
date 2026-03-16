@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any
 
 from tiangong_core.flow.nodes import BaseNode
 from tiangong_core.flow.schemas import NodeResult
@@ -22,13 +22,13 @@ class ToolExecNode(BaseNode):
     call_key: str = "tool_call"
     result_key: str = "tool_result"
 
-    def prep(self, shared: dict[str, Any]) -> Dict[str, Any]:
+    def prep(self, shared: dict[str, Any]) -> dict[str, Any]:
         return {
             "skills": shared.get(self.tools_key),
             "call": shared.get(self.call_key),
         }
 
-    def exec(self, input_data: Dict[str, Any]) -> NodeResult:
+    def exec(self, input_data: dict[str, Any]) -> NodeResult:
         skills = input_data.get("skills")
         call = input_data.get("call") or {}
         if not isinstance(skills, SkillsRuntime):
@@ -42,7 +42,7 @@ class ToolExecNode(BaseNode):
         out = skills.execute(name, args)
         return NodeResult(status="ok", data={"name": name, "output": out})
 
-    def post(self, shared: dict[str, Any], prep_res: Dict[str, Any], exec_res: NodeResult) -> str:
+    def post(self, shared: dict[str, Any], prep_res: dict[str, Any], exec_res: NodeResult) -> str:
         shared[self.result_key] = exec_res.data
         return exec_res.status
 

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 
 from tiangong_core.app import TiangongApp
 from tiangong_core.bus.events import InboundMessage
 from tiangong_core.bus.queue import InMemoryMessageBus
-from tiangong_core.config import AppConfig, AgentConfig, ProviderConfig, ToolConfig
+from tiangong_core.config import AgentConfig, AppConfig, ProviderConfig, ToolConfig
 from tiangong_core.providers.base import LLMProvider, LLMResponse
 from tiangong_core.session.manager import SessionManager
 
@@ -26,7 +26,7 @@ class DummyProvider(LLMProvider):
 
     def __init__(self, content: str) -> None:
         self._content = content
-        self.calls: List[dict[str, Any]] = []
+        self.calls: list[dict[str, Any]] = []
 
     def chat(self, *, messages, tools=None, model=None, tool_choice=None, reasoning_effort=None, generation=None):
         self.calls.append({"messages": messages, "tools": tools, "model": model})

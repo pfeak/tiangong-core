@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Iterable, Tuple
 
 from tiangong_core.bus.events import InboundMessage
 from tiangong_core.bus.queue import MessageBus
@@ -13,7 +12,7 @@ class CLIChannelConfig:
     channel_name: str = "cli"
     allow_all: bool = True
     # 显式 allowlist：空/None 表示默认策略（由 allow_all 决定）；包含 "*" 表示放通所有 sender。
-    allow_from: Tuple[str, ...] | None = None
+    allow_from: tuple[str, ...] | None = None
 
 
 class CLIChannel:

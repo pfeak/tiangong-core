@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -16,5 +16,5 @@ class NodeResult:
     """
 
     status: str
-    data: Dict[str, Any] | None = None
+    data: dict[str, Any] | None = None
     message: str | None = None

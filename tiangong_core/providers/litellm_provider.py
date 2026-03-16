@@ -75,20 +75,20 @@ def _coerce_mapping(obj: Any) -> dict[str, Any]:
     # pydantic v2
     if hasattr(obj, "model_dump"):
         try:
-            d = obj.model_dump()  # type: ignore[attr-defined]
+            d = obj.model_dump()
             return d if isinstance(d, dict) else {}
         except Exception:
             pass
     # pydantic v1
     if hasattr(obj, "dict"):
         try:
-            d = obj.dict()  # type: ignore[attr-defined]
+            d = obj.dict()
             return d if isinstance(d, dict) else {}
         except Exception:
             pass
     # generic objects
     try:
-        d = dict(obj)  # type: ignore[arg-type]
+        d = dict(obj)
         return d if isinstance(d, dict) else {}
     except Exception:
         pass
@@ -140,7 +140,7 @@ class LiteLLMProvider(LLMProvider):
         generation: dict[str, Any] | None = None,
     ) -> LLMResponse:
         try:
-            from litellm import completion  # type: ignore
+            from litellm import completion
         except Exception as e:  # pragma: no cover
             raise ModuleNotFoundError(
                 "缺少依赖 litellm。请在本项目环境中安装依赖后再运行："

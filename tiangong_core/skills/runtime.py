@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 Executor = Callable[[dict[str, Any]], Any]
 
@@ -59,4 +60,3 @@ class SkillsRuntime:
             return json.dumps({"ok": True, "result": res}, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False)
-

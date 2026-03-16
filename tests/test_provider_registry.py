@@ -1,6 +1,6 @@
 import pytest
 
-from tiangong_core.providers.registry import ProviderRegistry, ProviderSpec, DEFAULT_SPECS
+from tiangong_core.providers.registry import DEFAULT_SPECS, ProviderRegistry, ProviderSpec
 
 
 def test_find_gateway_by_api_base_and_key_prefix():
