@@ -31,10 +31,36 @@ def make_message_skills(ctx: MessageSkillContext) -> list[SkillFn]:
         )
         return {"ok": True}
 
+    def send_to(args: dict[str, Any]) -> dict[str, Any]:
+        channel = str(args.get("channel") or "").strip()
+        chat_id = str(args.get("chat_id") or "").strip()
+        content = str(args.get("content") or "")
+        if not channel or not chat_id:
+            return {"ok": False, "error": "channel/chat_id required"}
+        ctx.bus.publish_outbound(
+            OutboundMessage(
+                channel=channel,
+                chat_id=chat_id,
+                session_key=f"{channel}:{chat_id}",
+                content=content,
+                metadata=dict(ctx.metadata),
+            )
+        )
+        return {"ok": True}
+
     schema = {
         "type": "object",
         "properties": {"content": {"type": "string"}},
         "required": ["content"],
+    }
+    schema_send_to = {
+        "type": "object",
+        "properties": {
+            "channel": {"type": "string", "description": "target channel name (e.g. slack/telegram/feishu)"},
+            "chat_id": {"type": "string", "description": "target chat id (platform-specific)"},
+            "content": {"type": "string"},
+        },
+        "required": ["channel", "chat_id", "content"],
     }
     return [
         SkillFn(
@@ -42,7 +68,13 @@ def make_message_skills(ctx: MessageSkillContext) -> list[SkillFn]:
             description="Send a message to the current channel",
             parameters=schema,
             executor=send,
-        )
+        ),
+        SkillFn(
+            name="message.send_to",
+            description="Send a message to a specified channel/chat_id",
+            parameters=schema_send_to,
+            executor=send_to,
+        ),
     ]
 
 

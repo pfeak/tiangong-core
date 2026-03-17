@@ -35,5 +35,43 @@ uv tool list
 
 ## 配置（dotenv）
 
-- 将 `env.example` 复制为 `.env`（放在仓库根目录，或你运行 `tiangong -w <workspace>` 的 workspace 目录里）
-- 配置项会在启动时自动加载：优先 `workspace/.env`，其次当前目录 `.env`
+默认使用 `config.json`（推荐），环境变量优先级最高。
+
+- 将 `config.example.json` 复制为 `config.json`（放在仓库根目录，或你运行 `tiangong -w <workspace>` 的 workspace 目录里）
+- 启动时默认读取：`<workspace>/config.json`（不存在则尝试当前目录 `./config.json`）
+- 可用 `tiangong agent -c /path/to/config.json` 显式指定配置文件
+- 若你仍使用 `.env`，项目会继续加载（并作为环境变量覆盖 `config.json`），但推荐迁移到 `config.json`
+
+## Channels（发送沟通消息）
+
+tiangong-core 仅保留 `cli/telegram/feishu/qq` 四种 channel；配置统一在 `config.json` 的 `channels.*` 下完成（字段风格参考 nanobot：`token/appId/appSecret/secret/allowFrom`）。
+
+### Telegram
+
+- `channels.telegram.enabled`
+- `channels.telegram.token`
+- `channels.telegram.allowFrom`
+- inbound：使用 Bot API `getUpdates` long polling（无需额外服务）
+
+### Feishu/Lark
+
+- `channels.feishu.enabled`
+- `channels.feishu.appId`
+- `channels.feishu.appSecret`
+- `channels.feishu.allowFrom`
+- inbound webhook：
+  - `channels.feishu.webhookHost`
+  - `channels.feishu.webhookPort`
+  - `channels.feishu.webhookPath`
+
+### QQ
+
+- `channels.qq.enabled`
+- `channels.qq.appId`
+- `channels.qq.secret`
+- `channels.qq.allowFrom`
+
+### CLI
+
+- `channels.cli.enabled`
+- `channels.cli.allowFrom`（默认 `["*"]` 放通本地 CLI sender）

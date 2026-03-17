@@ -9,6 +9,7 @@ from tiangong_core.agent.loop import AgentLoop
 from tiangong_core.agent.subagent import SubagentManager
 from tiangong_core.bus.events import InboundMessage, OutboundMessage
 from tiangong_core.bus.queue import MessageBus
+from tiangong_core.channels.manager import ChannelManager
 from tiangong_core.config import AppConfig
 from tiangong_core.cron.service import CronService
 from tiangong_core.providers.litellm_provider import LiteLLMProvider
@@ -30,6 +31,7 @@ class TiangongApp:
         self.config = config
 
         self.bus = MessageBus()
+        self.channels = ChannelManager(bus=self.bus, config=self.config.channels)
         self.sessions = SessionManager(workspace)
         self.ctx_builder = ContextBuilder(workspace)
         # Background services (no env vars required)
@@ -40,7 +42,13 @@ class TiangongApp:
         self._agent_id = ident.agent_id
         self._agent_name = ident.agent_name
 
-        self.provider = LiteLLMProvider(api_key=config.provider.api_key, api_base=config.provider.api_base)
+        self.provider = LiteLLMProvider(
+            api_key=config.provider.api_key,
+            api_base=config.provider.api_base,
+            dashscope_enable_search=config.provider.dashscope_enable_search,
+            dashscope_search_options=config.provider.dashscope_search_options,
+            dashscope_enable_text_image_mixed=config.provider.dashscope_enable_text_image_mixed,
+        )
 
     def make_session_key(self, *, channel: str, chat_id: str) -> str:
         """
@@ -185,6 +193,10 @@ class TiangongApp:
             msg = self.bus.consume_inbound(timeout_s=0.5)
             if msg is None:
                 continue
+            try:
+                print(f"[inbound] channel={msg.channel} chat_id={msg.chat_id} content={msg.content!r}")
+            except Exception:
+                pass
             try:
                 self.run_once(msg)
             except Exception as e:

@@ -1,0 +1,54 @@
+{
+  "agent": {
+    "agentName": "core-default",
+    "model": "openai/gpt-4.1-mini",
+    "maxToolIterations": 12,
+    "toolResultMaxChars": 20000
+  },
+  "provider": {
+    "apiKey": "",
+    "apiBase": "",
+    "dashscopeEnableSearch": false,
+    "dashscopeSearchOptions": {},
+    "dashscopeEnableTextImageMixed": false
+  },
+  "tools": {
+    "restrictToWorkspace": true,
+    "shellTimeoutS": 30
+  },
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "token": "",
+      "allowFrom": [],
+      "proxy": null,
+      "replyToMessage": false
+    },
+    "qq": {
+      "enabled": false,
+      "appId": "",
+      "secret": "",
+      "allowFrom": []
+    },
+    "feishu": {
+      "enabled": false,
+      "mode": "socket",
+      "appId": "",
+      "appSecret": "",
+      "encryptKey": "",
+      "verificationToken": "",
+      "allowFrom": [],
+      "reactEmoji": "SaluteFace",
+      "replyInThread": false,
+      "webhookHost": "0.0.0.0",
+      "webhookPort": 18791,
+      "webhookPath": "/feishu/events"
+    },
+    "cli": {
+      "enabled": true,
+      "allowFrom": [
+        "*"
+      ]
+    }
+  }
+}

@@ -1,18 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from tiangong_core.bus.events import InboundMessage
 from tiangong_core.bus.queue import MessageBus
+from tiangong_core.channels.config import CLIChannelConfig
 from tiangong_core.utils.ids import new_id
-
-
-@dataclass(frozen=True)
-class CLIChannelConfig:
-    channel_name: str = "cli"
-    allow_all: bool = True
-    # 显式 allowlist：空/None 表示默认策略（由 allow_all 决定）；包含 "*" 表示放通所有 sender。
-    allow_from: tuple[str, ...] | None = None
 
 
 class CLIChannel:
@@ -24,14 +15,10 @@ class CLIChannel:
         """
         基于 CLIChannelConfig 的简单 allowlist 判断：
 
-        - allow_all=True：始终允许（兼容本地 CLI 的默认体验）
-        - allow_all=False 且 allow_from 未配置/为空：全部拒绝
+        - allow_from 为空：全部拒绝
         - allow_from 包含 "*"：允许所有 sender
         - 否则仅允许 sender_id 在 allow_from 中的请求
         """
-        if self._cfg.allow_all:
-            return True
-
         allow_from = self._cfg.allow_from or ()
         if not allow_from:
             return False

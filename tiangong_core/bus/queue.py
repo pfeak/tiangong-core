@@ -1,22 +1,27 @@
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
 from threading import Condition
+from typing import Generic, TypeVar
 
 from .events import InboundMessage, OutboundMessage
 
+T = TypeVar("T")
+
 
 @dataclass
-class _Queue:
-    items: deque
+class _Queue(Generic[T]):
+    items: deque[T]
     cv: Condition
 
 
 class MessageBus:
     def __init__(self) -> None:
-        self._inbound = _Queue(deque(), Condition())
-        self._outbound = _Queue(deque(), Condition())
+        self._inbound: _Queue[InboundMessage] = _Queue(deque(), Condition())
+        self._outbound: _Queue[OutboundMessage] = _Queue(deque(), Condition())
+        self._outbound_listeners: list[Callable[[OutboundMessage], None]] = []
 
     def publish_inbound(self, msg: InboundMessage) -> None:
         with self._inbound.cv:
@@ -30,15 +35,28 @@ class MessageBus:
             return self._inbound.items.popleft() if self._inbound.items else None
 
     def publish_outbound(self, msg: OutboundMessage) -> None:
+        listeners: list[Callable[[OutboundMessage], None]]
         with self._outbound.cv:
             self._outbound.items.append(msg)
             self._outbound.cv.notify()
+            listeners = list(self._outbound_listeners)
+        # Call listeners out of lock to avoid deadlocks.
+        for fn in listeners:
+            try:
+                fn(msg)
+            except Exception:
+                # Listener failures must not break core flow.
+                continue
 
     def consume_outbound(self, timeout_s: float | None = None) -> OutboundMessage | None:
         with self._outbound.cv:
             if not self._outbound.items:
                 self._outbound.cv.wait(timeout=timeout_s)
             return self._outbound.items.popleft() if self._outbound.items else None
+
+    def add_outbound_listener(self, fn: Callable[[OutboundMessage], None]) -> None:
+        with self._outbound.cv:
+            self._outbound_listeners.append(fn)
 
 
 class InMemoryMessageBus(MessageBus):

@@ -15,6 +15,17 @@ def test_load_config_env_priority(tmp_path, monkeypatch) -> None:
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("TIANGONG_HOME", str(home))
+    # 清理可能污染测试的 OS env（dotenv 不会覆盖已存在的 OS env）
+    for k in (
+        "TIANGONG_MODEL",
+        "OPENAI_MODEL",
+        "TIANGONG_AGENT_NAME",
+        "TIANGONG_API_KEY",
+        "OPENAI_API_KEY",
+        "TIANGONG_BASE_URL",
+        "OPENAI_BASE_URL",
+    ):
+        monkeypatch.delenv(k, raising=False)
 
     # 1) 用户目录 .env
     (home / ".env").write_text(

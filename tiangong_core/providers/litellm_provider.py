@@ -124,10 +124,21 @@ def _parse_tool_calls(resp_message: dict[str, Any]) -> list[ToolCallRequest]:
 
 
 class LiteLLMProvider(LLMProvider):
-    def __init__(self, *, api_key: str | None = None, api_base: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        api_key: str | None = None,
+        api_base: str | None = None,
+        dashscope_enable_search: bool = False,
+        dashscope_search_options: dict[str, Any] | None = None,
+        dashscope_enable_text_image_mixed: bool = False,
+    ) -> None:
         self._api_key = api_key
         self._api_base = api_base
         self._registry = ProviderRegistry()
+        self._dashscope_enable_search = dashscope_enable_search
+        self._dashscope_search_options = dashscope_search_options or {}
+        self._dashscope_enable_text_image_mixed = dashscope_enable_text_image_mixed
 
     def chat(
         self,
@@ -197,21 +208,30 @@ class LiteLLMProvider(LLMProvider):
             is_dashscope = True
 
         if is_dashscope:
-            flag = os.getenv("TIANGONG_DASHSCOPE_ENABLE_SEARCH", "").lower()
-            if flag in ("1", "true", "yes", "on"):
+            # 首选 config.json 中的 provider.dashscope_* 配置；仍允许 env 覆盖以便调试。
+            flag_cfg = self._dashscope_enable_search
+            flag_env = os.getenv("TIANGONG_DASHSCOPE_ENABLE_SEARCH", "").lower()
+            enable_search = flag_cfg or flag_env in ("1", "true", "yes", "on")
+            if enable_search:
                 payload["enable_search"] = True
+                search_options: dict[str, Any] = {}
+                if self._dashscope_search_options:
+                    search_options.update(self._dashscope_search_options)
                 opts_raw = os.getenv("TIANGONG_DASHSCOPE_SEARCH_OPTIONS", "")
                 if opts_raw:
                     try:
-                        search_options = json.loads(opts_raw)
-                        if isinstance(search_options, dict):
-                            payload["search_options"] = search_options
+                        env_opts = json.loads(opts_raw)
+                        if isinstance(env_opts, dict):
+                            search_options.update(env_opts)
                     except Exception:
                         # 配置错误时静默忽略，避免影响主流程
                         pass
+                if search_options:
+                    payload["search_options"] = search_options
 
+            img_cfg = self._dashscope_enable_text_image_mixed
             img_flag = os.getenv("TIANGONG_DASHSCOPE_ENABLE_TEXT_IMAGE_MIXED", "").lower()
-            if img_flag in ("1", "true", "yes", "on"):
+            if img_cfg or img_flag in ("1", "true", "yes", "on"):
                 payload["enable_text_image_mixed"] = True
 
         _ = reasoning_effort

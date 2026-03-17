@@ -213,3 +213,4 @@ sessions/
 skills/
 runtime/
 .clawhub/
+config.json

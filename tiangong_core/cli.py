@@ -3,7 +3,9 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
+import sys
 import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -21,6 +23,17 @@ from tiangong_core.agent.skills import SkillsLoader
 from tiangong_core.app import TiangongApp
 from tiangong_core.channels.cli import CLIChannel, CLIChannelConfig
 from tiangong_core.config import load_config
+from tiangong_core.gateway.pidfile import (
+    gateway_log_path,
+    gateway_pid_path,
+    remove_pid,
+    stop_pid,
+    write_pid,
+)
+from tiangong_core.gateway.pidfile import (
+    status as gateway_status,
+)
+from tiangong_core.gateway.service import run_gateway
 from tiangong_core.utils.ids import new_id
 
 app = typer.Typer(
@@ -29,8 +42,20 @@ app = typer.Typer(
     no_args_is_help=True,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
-skills_app = typer.Typer(name="skills", help="skills management")
+skills_app = typer.Typer(
+    name="skills",
+    help="skills management",
+    no_args_is_help=True,
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
 app.add_typer(skills_app, name="skills")
+gateway_app = typer.Typer(
+    name="gateway",
+    help="gateway management",
+    no_args_is_help=True,
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
+app.add_typer(gateway_app, name="gateway")
 
 console = Console()
 EXIT_COMMANDS = {"exit", "quit", "/exit", "/quit", ":q"}
@@ -67,6 +92,7 @@ def _is_exit_command(s: str) -> bool:
 @skills_app.command("list", help="List all available skills in the workspace")
 def skills_list(
     workspace: Path = typer.Option(Path("."), "--workspace", "-w", help="workspace path (default: .)"),
+    config: Path | None = typer.Option(None, "--config", "-c", help="config json path (default: workspace/config.json)"),
 ) -> None:
     ws = workspace.resolve()
     loader = SkillsLoader(workspace=ws)
@@ -80,6 +106,7 @@ def skills_list(
 @skills_app.command("summary", help="Show a summary of skills and always-on skills")
 def skills_summary(
     workspace: Path = typer.Option(Path("."), "--workspace", "-w", help="workspace path (default: .)"),
+    config: Path | None = typer.Option(None, "--config", "-c", help="config json path (default: workspace/config.json)"),
 ) -> None:
     ws = workspace.resolve()
     loader = SkillsLoader(workspace=ws)
@@ -94,6 +121,7 @@ def skills_summary(
 def skills_show(
     name: str = typer.Argument(..., help="skill name"),
     workspace: Path = typer.Option(Path("."), "--workspace", "-w", help="workspace path (default: .)"),
+    config: Path | None = typer.Option(None, "--config", "-c", help="config json path (default: workspace/config.json)"),
 ) -> None:
     ws = workspace.resolve()
     loader = SkillsLoader(workspace=ws)
@@ -110,6 +138,7 @@ def skills_install(
         help="optional skill names to install/update (default: interactive or as defined by clawhub)",
     ),
     workspace: Path = typer.Option(Path("."), "--workspace", "-w", help="workspace path (default: .)"),
+    config: Path | None = typer.Option(None, "--config", "-c", help="config json path (default: workspace/config.json)"),
     update: bool = typer.Option(False, "--update", help="use clawhub update instead of install"),
 ) -> None:
     """
@@ -170,6 +199,7 @@ def skills_install(
 def agent(
     message: str | None = typer.Option(None, "--message", "-m", help="single message mode"),
     workspace: Path = typer.Option(Path("."), "--workspace", "-w", help="workspace path (default: .)"),
+    config: Path | None = typer.Option(None, "--config", "-c", help="config json path (default: workspace/config.json)"),
     chat_id: str = typer.Option("default", "--chat-id", help="chat id (default: default)"),
     markdown: bool = typer.Option(True, "--markdown/--no-markdown", help="render assistant output as Markdown"),
 ) -> None:
@@ -178,7 +208,7 @@ def agent(
     logging.getLogger("LiteLLM").setLevel(logging.ERROR)
 
     ws = workspace.resolve()
-    cfg = load_config(ws)
+    cfg = load_config(ws, config_path=config)
     core = TiangongApp(workspace=ws, config=cfg)
 
     # 将本地 CLI 封装为 CLIChannel，并在入口做 sender 级 ACL 校验。
@@ -264,6 +294,155 @@ def agent(
                 console.print("Goodbye!")
                 break
             _run_one_turn(text)
+
+
+@gateway_app.command("run", help="Run gateway in foreground (blocks)", hidden=True)
+def gateway_run(
+    workspace: Path = typer.Option(Path("."), "--workspace", "-w", help="workspace path (default: .)"),
+    config: Path | None = typer.Option(None, "--config", "-c", help="config json path (default: workspace/config.json)"),
+) -> None:
+    ws = workspace.resolve()
+    cfg = load_config(ws, config_path=config)
+    run_gateway(workspace=ws, config=cfg, config_path=config)
+
+
+@gateway_app.command("start", help="Start gateway in background")
+def gateway_start(
+    workspace: Path = typer.Option(Path("."), "--workspace", "-w", help="workspace path (default: .)"),
+    config: Path | None = typer.Option(None, "--config", "-c", help="config json path (default: workspace/config.json)"),
+    v: bool = typer.Option(False, "-v", help="在前台运行（等价于旧的 `tiangong gateway run`）"),
+) -> None:
+    ws = workspace.resolve()
+    if v:
+        cfg = load_config(ws, config_path=config)
+        run_gateway(workspace=ws, config=cfg, config_path=config)
+        return
+
+    st = gateway_status(ws)
+    if st.running:
+        console.print(f"[yellow]gateway already running[/yellow] pid={st.pid}")
+        raise typer.Exit(0)
+
+    logp = gateway_log_path(ws)
+    pidp = gateway_pid_path(ws)
+    logp.parent.mkdir(parents=True, exist_ok=True)
+    f = open(logp, "a", encoding="utf-8")  # noqa: SIM115
+    argv = [sys.executable, "-m", "tiangong_core.cli", "gateway", "run", "-w", str(ws)]
+    if config is not None:
+        argv.extend(["-c", str(config)])
+    p = subprocess.Popen(argv, stdout=f, stderr=f, start_new_session=True)
+    write_pid(pidp, p.pid)
+    console.print(f"[green]✓[/green] gateway started pid={p.pid} log={logp}")
+
+
+@gateway_app.command("stop", help="Stop gateway")
+def gateway_stop(
+    workspace: Path = typer.Option(Path("."), "--workspace", "-w", help="workspace path (default: .)"),
+    config: Path | None = typer.Option(None, "--config", "-c", help="config json path (default: workspace/config.json)"),
+) -> None:
+    ws = workspace.resolve()
+    st = gateway_status(ws)
+    if not st.pid:
+        console.print("[yellow]gateway not running[/yellow] (no pidfile)")
+        raise typer.Exit(0)
+    if not st.running:
+        remove_pid(gateway_pid_path(ws))
+        console.print("[yellow]gateway pidfile existed but process not running; cleaned[/yellow]")
+        raise typer.Exit(0)
+    try:
+        stop_pid(st.pid)
+    except Exception as e:
+        console.print(f"[red]failed to stop gateway[/red] pid={st.pid} err={e}")
+        raise typer.Exit(1)
+    console.print(f"[green]✓[/green] gateway stop signal sent pid={st.pid}")
+
+
+@gateway_app.command("restart", help="Restart gateway")
+def gateway_restart(
+    workspace: Path = typer.Option(Path("."), "--workspace", "-w", help="workspace path (default: .)"),
+    config: Path | None = typer.Option(None, "--config", "-c", help="config json path (default: workspace/config.json)"),
+    v: bool = typer.Option(False, "-v", help="在前台运行（重启后阻塞）"),
+    timeout_s: float = typer.Option(10.0, "--timeout-s", help="等待旧进程退出的超时（秒）"),
+) -> None:
+    ws = workspace.resolve()
+
+    st = gateway_status(ws)
+    if st.pid and st.running:
+        try:
+            stop_pid(st.pid)
+        except Exception as e:
+            console.print(f"[red]failed to stop gateway[/red] pid={st.pid} err={e}")
+            raise typer.Exit(1)
+        console.print(f"[green]✓[/green] gateway stop signal sent pid={st.pid}")
+
+        # 等待进程退出（最多 timeout_s 秒），然后清理 pidfile（避免 stale）
+        start_ts = time.monotonic()
+        while True:
+            cur = gateway_status(ws)
+            if not cur.pid or not cur.running:
+                remove_pid(gateway_pid_path(ws))
+                break
+            if time.monotonic() - start_ts >= max(0.0, timeout_s):
+                console.print(f"[yellow]timeout waiting gateway to stop[/yellow] pid={st.pid}")
+                break
+            time.sleep(0.2)
+    elif st.pid and not st.running:
+        remove_pid(gateway_pid_path(ws))
+        console.print("[yellow]gateway pidfile existed but process not running; cleaned[/yellow]")
+
+    # start（复用 start 逻辑；-v 时前台跑）
+    if v:
+        cfg = load_config(ws, config_path=config)
+        run_gateway(workspace=ws, config=cfg, config_path=config)
+        return
+
+    st2 = gateway_status(ws)
+    if st2.running:
+        console.print(f"[yellow]gateway already running[/yellow] pid={st2.pid}")
+        raise typer.Exit(0)
+
+    logp = gateway_log_path(ws)
+    pidp = gateway_pid_path(ws)
+    logp.parent.mkdir(parents=True, exist_ok=True)
+    f = open(logp, "a", encoding="utf-8")  # noqa: SIM115
+    argv = [sys.executable, "-m", "tiangong_core.cli", "gateway", "run", "-w", str(ws)]
+    if config is not None:
+        argv.extend(["-c", str(config)])
+    p = subprocess.Popen(argv, stdout=f, stderr=f, start_new_session=True)
+    write_pid(pidp, p.pid)
+    console.print(f"[green]✓[/green] gateway restarted pid={p.pid} log={logp}")
+
+
+@gateway_app.command("status", help="Show gateway status")
+def gateway_status_cmd(
+    workspace: Path = typer.Option(Path("."), "--workspace", "-w", help="workspace path (default: .)"),
+    config: Path | None = typer.Option(None, "--config", "-c", help="config json path (default: workspace/config.json)"),
+) -> None:
+    ws = workspace.resolve()
+    st = gateway_status(ws)
+    if st.pid and st.running:
+        console.print(f"[green]running[/green] pid={st.pid} log={gateway_log_path(ws)}")
+    elif st.pid and not st.running:
+        console.print(f"[yellow]stale[/yellow] pid={st.pid} (not running) pidfile={gateway_pid_path(ws)}")
+    else:
+        console.print(f"[dim]stopped[/dim] pidfile={gateway_pid_path(ws)}")
+
+
+@gateway_app.command("workspace", help="Show resolved workspace path", hidden=True)
+def gateway_workspace_cmd(
+    workspace: Path = typer.Option(Path("."), "--workspace", "-w", help="workspace path (default: .)"),
+) -> None:
+    console.print(str(workspace.resolve()))
+
+
+@gateway_app.command("config", help="Show config path resolution", hidden=True)
+def gateway_config_cmd(
+    workspace: Path = typer.Option(Path("."), "--workspace", "-w", help="workspace path (default: .)"),
+    config: Path | None = typer.Option(None, "--config", "-c", help="config json path (optional)"),
+) -> None:
+    ws = workspace.resolve()
+    cfg_path = config or (ws / "config.json")
+    console.print(str(cfg_path.resolve()))
 
 
 def main(argv: list[str] | None = None) -> int:
